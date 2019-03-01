@@ -1,0 +1,52 @@
+{
+  "tokenOrder": [
+    "redButton:Donald",
+    "redButton:Vladimir"
+  ],
+  "tokens": [
+    {
+      "algo": "SHA1",
+      "counter": 0,
+      "digits": 6,
+      "issuerExt": "redButton",
+      "issuerInt": "redButton",
+      "label": "Donald",
+      "period": 30,
+      "secret": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "type": "TOTP"
+    },
+    {
+      "algo": "SHA1",
+      "counter": 0,
+      "digits": 6,
+      "issuerExt": "redButton",
+      "issuerInt": "redButton",
+      "label": "Vladimir",
+      "period": 30,
+      "secret": [
+        -19,
+        -2,
+        -21,
+        -28,
+        41,
+        11,
+        73,
+        84,
+        41,
+        -24
+      ],
+      "type": "TOTP"
+    }
+  ]
+}
