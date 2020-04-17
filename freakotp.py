@@ -80,6 +80,10 @@ class FreakOTP(object):
         for i, item in enumerate(self.data['tokenOrder'], start=1):
             print('{0:2d}) {1}'.format(i, item))
 
+    def list(self):
+        for item in self.data['tokenOrder']:
+            print(item)
+
     def prompt(self):
         choice = input('Please make a choice: ')
         try:
@@ -133,8 +137,18 @@ class FreakOTP(object):
 
 def main():
     parser = argparse.ArgumentParser(description='FreakOTP is a command line two-factor authentication application.')
-    parser.add_argument('-f', '--filename', dest='filename', help='freeotp-backup.json path', default=DEFAULT_FILENAME)
-    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='verbose output')
+    parser.add_argument('-f', '--filename',
+            dest='filename',
+            help='freeotp-backup.json path (default: {0})'.format(DEFAULT_FILENAME),
+            default=DEFAULT_FILENAME)
+    parser.add_argument('-v', '--verbose',
+            dest='verbose',
+            action='store_true',
+            help='verbose output')
+    parser.add_argument('-ls',
+            dest='list',
+            action='store_true',
+            help='display token list')
     parser.add_argument('token', nargs='*')
     args = parser.parse_args()
     if not os.path.exists(args.filename):
@@ -146,10 +160,11 @@ def main():
             if freak.verbose:
                 print(json.dumps(token, indent=2))
             print(freak.calculate(token))
+    elif args.list:
+        freak.list()
     else:
         freak.menu()
         freak.prompt()
 
 if __name__ == "__main__":
     main()
-
