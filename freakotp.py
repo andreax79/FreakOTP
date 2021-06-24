@@ -34,7 +34,7 @@ import hashlib
 import argparse
 
 __author__ = 'Andrea Bonomi <andrea.bonomi@gmail.com>'
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __all__ = [
     'FreakOTP',
     'DEFAULT_PERIOD',
@@ -85,7 +85,10 @@ class FreakOTP(object):
             print(item)
 
     def prompt(self):
-        choice = input('Please make a choice: ')
+        try:
+            choice = input('Please make a choice: ')
+        except KeyboardInterrupt:
+            return
         try:
             index = int(choice)
         except:
@@ -119,6 +122,10 @@ class FreakOTP(object):
         return result
 
     def calculate(self, token, value=None):
+        if token.get('type') == 'SecurID':
+            from securid.jsontoken import JSONTokenFile
+            return JSONTokenFile(data=token).get_token().now()
+            return ''
         secret = bytes((x + 256) & 255 for x in token["secret"])
         algorithm = ALGORITHMS.get(token.get('algo', DEFAULT_ALGORITHM), hashlib.sha1)
         if value is None:
