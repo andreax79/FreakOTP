@@ -32,11 +32,14 @@ import hmac
 import struct
 import hashlib
 import argparse
+import base64
+import urllib.parse
 
 __author__ = 'Andrea Bonomi <andrea.bonomi@gmail.com>'
-__version__ = '1.0.1'
+__version__ = '2.0.0'
 __all__ = [
     'FreakOTP',
+    'Token',
     'DEFAULT_PERIOD',
     'DEFAULT_ALGORITHM',
     'DEFAULT_DIGITS',
@@ -63,6 +66,93 @@ DEFAULT_FILENAME = os.path.join(
     os.path.join(os.environ['HOME'], '.config'),
     'freeotp-backup.json'
 )
+
+TOTP = 'TOTP'
+HOTP = 'HOTP'
+SECURID = 'SecurID'
+
+class Token(object):
+
+    def __init__(self, data=None, uri=None):
+        if data is not None:
+            self.data = data
+            self.type = data.get('type')
+            self.algorithm = data.get('algo') or DEFAULT_ALGORITHM
+            self.counter = data.get('counter')
+            self.digits = data.get('digits') or DEFAULT_DIGITS
+            self.issuer_int = data.get('issuerInt')
+            self.issuer_ext = data.get('issuerExt')
+            self.issuer = self.issuer_int or self.issuer_ext
+            self.label = data.get('label')
+            self.period = data.get('period') or DEFAULT_PERIOD
+            self.secret = bytes([ (x + 256) % 256 for x in data['secret']])
+        elif uri is not None:
+            uri_components = urllib.parse.urlparse(uri)
+            query = dict(urllib.parse.parse_qsl(uri_components.query))
+            self.type = uri_components.netloc.upper()
+            self.algorithm = query.get('algorithm') or DEFAULT_ALGORITHM
+            self.counter = int(query.get('counter')) if 'counter' in query else 0
+            self.digits = int(query.get('digits')) if 'digest' in query else DEFAULT_DIGITS
+            if ':' in uri_components.path:
+                self.issuer, self.label = uri_components.path.split(':', 1)
+                self.issuer_int = self.issuer
+                self.issuer_ext = self.issuer
+            else:
+                self.label = uri_components.path
+                self.issuer = None
+                self.issuer_int = None
+                self.issuer_ext = None
+            self.period = int(query.get('period')) if 'period' in query else DEFAULT_PERIOD
+            self.secret = base64.b32decode(query.get('secret'))
+
+    def calculate(self, value=None):
+        if self.type == SECURID:
+            from securid.jsontoken import JSONTokenFile
+            return JSONTokenFile(data=self.data).get_token().now()
+            return ''
+        algorithm = ALGORITHMS.get(self.algorithm, hashlib.sha1)
+        if value is None:
+            if self.type == HOTP: # HOTP
+                value = self.counter
+            else: # TOTP
+                value = time.time() / self.period
+        t = struct.pack(">q", int(value))
+        hmac_ = hmac.HMAC(self.secret, t, algorithm).digest()
+        offset = hmac_[-1] & 0x0f
+        code = struct.unpack('>L', hmac_[offset:offset+4])[0]
+        frmt = '{0:0%dd}' % self.digits
+        return frmt.format((code & 0x7fffffff) % int(math.pow(10, self.digits)))
+
+    def to_json(self):
+        " Return token as json "
+        return json.dumps(self.data, indent=2)
+
+    def to_uri(self):
+        " Return token as otpauth uri "
+        data = {}
+        if self.algorithm:
+            data['algorithm'] = self.algorithm
+        if self.digits:
+            data['digits'] = self.digits
+        if self.period:
+            data['period'] = self.period
+        if self.type == HOTP and self.counter:
+            data['counter'] = self.counter
+        data['secret'] = base64.b32encode(self.secret)
+        if self.issuer:
+            label = self.issuer + ':' + self.label
+        else:
+            label = self.label
+        query = urllib.parse.urlencode(data)
+        return urllib.parse.urlunparse(('otpauth', self.type.lower(), label, None, query, None))
+
+    def print_qrcode(self):
+        " Print token as qrcode "
+        import qrcode
+        qr = qrcode.QRCode()
+        qr.add_data(self.to_uri())
+        qr.print_ascii()
+
 
 class FreakOTP(object):
 
@@ -98,49 +188,34 @@ class FreakOTP(object):
         except KeyError:
             print('Not found')
         if self.verbose:
-            print(json.dumps(token, indent=2))
-        print(self.calculate(token))
+            print(token.to_json())
+        print(token.calculate())
 
     def get_token(self, index):
         t = self.data['tokenOrder'][index - 1]
         t = t.split(':', 1)
         try:
-            return [x for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]][0]
+            return [Token(x) for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]][0]
         except:
             raise KeyError(index)
 
-    def find(self, label):
+    def find(self, arg):
         result = []
-        labels = [x.lower().strip() for x in ([label] if isinstance(label, str) else label)]
+        labels = [x.strip() for x in ([arg] if isinstance(arg, str) else arg)]
+        for label in labels:
+            if label.startswith('otpauth://'):
+                result.append(Token(uri=label))
         for token in self.data['tokenOrder']:
             tmp = token.lower().strip()
             for label in labels:
-                if label in tmp:
+                if label.lower() in tmp:
                     t = token.split(':', 1)
-                    result.extend([x for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]])
+                    result.extend([Token(x) for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]])
                     break
         return result
 
     def calculate(self, token, value=None):
-        if token.get('type') == 'SecurID':
-            from securid.jsontoken import JSONTokenFile
-            return JSONTokenFile(data=token).get_token().now()
-            return ''
-        secret = bytes((x + 256) & 255 for x in token["secret"])
-        algorithm = ALGORITHMS.get(token.get('algo', DEFAULT_ALGORITHM), hashlib.sha1)
-        if value is None:
-            if token.get('type') == 'HOTP': # HOTP
-                value = token['counter']
-            else: # TOTP
-                period = token.get('period', DEFAULT_PERIOD)
-                value = time.time() / period
-        t = struct.pack(">q", int(value))
-        hmac_ = hmac.HMAC(secret, t, algorithm).digest()
-        offset = hmac_[-1] & 0x0f
-        code = struct.unpack('>L', hmac_[offset:offset+4])[0]
-        digits = token.get('digits', DEFAULT_DIGITS)
-        frmt = '{0:0%dd}' % digits
-        return frmt.format((code & 0x7fffffff) % int(math.pow(10, digits)))
+        return Token(token).calculate(value=value)
 
 def main():
     parser = argparse.ArgumentParser(description='FreakOTP is a command line two-factor authentication application.')
@@ -156,6 +231,14 @@ def main():
             dest='list',
             action='store_true',
             help='display token list')
+    parser.add_argument('--uri',
+            dest='uri',
+            action='store_true',
+            help='generate uri for token')
+    parser.add_argument('--qrcode',
+            dest='qrcode',
+            action='store_true',
+            help='generate qrcode for token')
     parser.add_argument('token', nargs='*')
     args = parser.parse_args()
     if not os.path.exists(args.filename):
@@ -165,8 +248,13 @@ def main():
     if args.token:
         for token in freak.find(args.token):
             if freak.verbose:
-                print(json.dumps(token, indent=2))
-            print(freak.calculate(token))
+                print(token.to_json())
+            if args.uri:
+                print(token.to_uri())
+            elif args.qrcode:
+                token.print_qrcode()
+            else:
+                print(token.calculate())
     elif args.list:
         freak.list()
     else:
