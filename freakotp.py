@@ -51,28 +51,28 @@ if sys.version_info <= (3, 0):
     sys.exit(1)
 
 ALGORITHMS = {
-    'SHA1':   hashlib.sha1,
+    'SHA1': hashlib.sha1,
     'SHA256': hashlib.sha256,
     'SHA512': hashlib.sha512,
-    'MD5':    hashlib.md5
+    'MD5': hashlib.md5,
 }
 
 DEFAULT_PERIOD = 30
 DEFAULT_ALGORITHM = 'SHA1'
 DEFAULT_DIGITS = 6
 DEFAULT_FILENAME = os.path.join(
-    os.environ.get('APPDATA') or
-    os.environ.get('XDG_CONFIG_HOME') or
-    os.path.join(os.environ['HOME'], '.config'),
-    'freeotp-backup.json'
+    os.environ.get('APPDATA')
+    or os.environ.get('XDG_CONFIG_HOME')
+    or os.path.join(os.environ['HOME'], '.config'),
+    'freeotp-backup.json',
 )
 
 TOTP = 'TOTP'
 HOTP = 'HOTP'
 SECURID = 'SecurID'
 
-class Token(object):
 
+class Token(object):
     def __init__(self, data=None, uri=None):
         if data is not None:
             self.data = data
@@ -85,14 +85,16 @@ class Token(object):
             self.issuer = self.issuer_int or self.issuer_ext
             self.label = data.get('label')
             self.period = data.get('period') or DEFAULT_PERIOD
-            self.secret = bytes([ (x + 256) % 256 for x in data['secret']])
+            self.secret = bytes([(x + 256) % 256 for x in data['secret']])
         elif uri is not None:
             uri_components = urllib.parse.urlparse(uri)
             query = dict(urllib.parse.parse_qsl(uri_components.query))
             self.type = uri_components.netloc.upper()
             self.algorithm = query.get('algorithm') or DEFAULT_ALGORITHM
             self.counter = int(query.get('counter')) if 'counter' in query else 0
-            self.digits = int(query.get('digits')) if 'digest' in query else DEFAULT_DIGITS
+            self.digits = (
+                int(query.get('digits')) if 'digest' in query else DEFAULT_DIGITS
+            )
             if ':' in uri_components.path:
                 self.issuer, self.label = uri_components.path.split(':', 1)
                 self.issuer_int = self.issuer
@@ -102,33 +104,36 @@ class Token(object):
                 self.issuer = None
                 self.issuer_int = None
                 self.issuer_ext = None
-            self.period = int(query.get('period')) if 'period' in query else DEFAULT_PERIOD
+            self.period = (
+                int(query.get('period')) if 'period' in query else DEFAULT_PERIOD
+            )
             self.secret = base64.b32decode(query.get('secret'))
 
     def calculate(self, value=None):
         if self.type == SECURID:
             from securid.jsontoken import JSONTokenFile
+
             return JSONTokenFile(data=self.data).get_token().now()
             return ''
         algorithm = ALGORITHMS.get(self.algorithm, hashlib.sha1)
         if value is None:
-            if self.type == HOTP: # HOTP
+            if self.type == HOTP:  # HOTP
                 value = self.counter
-            else: # TOTP
+            else:  # TOTP
                 value = time.time() / self.period
         t = struct.pack(">q", int(value))
         hmac_ = hmac.HMAC(self.secret, t, algorithm).digest()
-        offset = hmac_[-1] & 0x0f
-        code = struct.unpack('>L', hmac_[offset:offset+4])[0]
+        offset = hmac_[-1] & 0x0F
+        code = struct.unpack('>L', hmac_[offset : offset + 4])[0]
         frmt = '{0:0%dd}' % self.digits
-        return frmt.format((code & 0x7fffffff) % int(math.pow(10, self.digits)))
+        return frmt.format((code & 0x7FFFFFFF) % int(math.pow(10, self.digits)))
 
     def to_json(self):
-        " Return token as json "
+        "Return token as json"
         return json.dumps(self.data, indent=2)
 
     def to_uri(self):
-        " Return token as otpauth uri "
+        "Return token as otpauth uri"
         data = {}
         if self.algorithm:
             data['algorithm'] = self.algorithm
@@ -144,11 +149,14 @@ class Token(object):
         else:
             label = self.label
         query = urllib.parse.urlencode(data)
-        return urllib.parse.urlunparse(('otpauth', self.type.lower(), label, None, query, None))
+        return urllib.parse.urlunparse(
+            ('otpauth', self.type.lower(), label, None, query, None)
+        )
 
     def print_qrcode(self):
-        " Print token as qrcode "
+        "Print token as qrcode"
         import qrcode
+
         qr = qrcode.QRCode()
         qr.add_data(self.to_uri())
         qr.print_ascii()
@@ -195,7 +203,11 @@ class FreakOTP(object):
         t = self.data['tokenOrder'][index - 1]
         t = t.split(':', 1)
         try:
-            return [Token(x) for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]][0]
+            return [
+                Token(data=x)
+                for x in self.data['tokens']
+                if x['issuerInt'] == t[0] and x['label'] == t[1]
+            ][0]
         except:
             raise KeyError(index)
 
@@ -210,41 +222,53 @@ class FreakOTP(object):
             for label in labels:
                 if label.lower() in tmp:
                     t = token.split(':', 1)
-                    result.extend([Token(x) for x in self.data['tokens'] if x['issuerInt'] == t[0] and x['label'] == t[1]])
+                    result.extend(
+                        [
+                            Token(data=x)
+                            for x in self.data['tokens']
+                            if x['issuerInt'] == t[0] and x['label'] == t[1]
+                        ]
+                    )
                     break
         return result
 
     def calculate(self, token, value=None):
         return Token(token).calculate(value=value)
 
+
 def main():
-    parser = argparse.ArgumentParser(description='FreakOTP is a command line two-factor authentication application.')
-    parser.add_argument('-f', '--filename',
-            dest='filename',
-            help='freeotp-backup.json path (default: {0})'.format(DEFAULT_FILENAME),
-            default=DEFAULT_FILENAME)
-    parser.add_argument('-v', '--verbose',
-            dest='verbose',
-            action='store_true',
-            help='verbose output')
-    parser.add_argument('-ls',
-            dest='list',
-            action='store_true',
-            help='display token list')
-    parser.add_argument('--uri',
-            dest='uri',
-            action='store_true',
-            help='generate uri for token')
-    parser.add_argument('--qrcode',
-            dest='qrcode',
-            action='store_true',
-            help='generate qrcode for token')
+    parser = argparse.ArgumentParser(
+        description='FreakOTP is a command line two-factor authentication application.'
+    )
+    parser.add_argument(
+        '-f',
+        '--filename',
+        dest='filename',
+        help='freeotp-backup.json path (default: {0})'.format(DEFAULT_FILENAME),
+        default=DEFAULT_FILENAME,
+    )
+    parser.add_argument(
+        '-v', '--verbose', dest='verbose', action='store_true', help='verbose output'
+    )
+    parser.add_argument(
+        '-ls', dest='list', action='store_true', help='display token list'
+    )
+    parser.add_argument(
+        '--uri', dest='uri', action='store_true', help='generate uri for token'
+    )
+    parser.add_argument(
+        '--qrcode', dest='qrcode', action='store_true', help='generate qrcode for token'
+    )
     parser.add_argument('token', nargs='*')
     args = parser.parse_args()
     if not os.path.exists(args.filename):
-        print('File {0} not found. Please copy the FreeOTP backup in the given path.'.format(args.filename))
+        print(
+            'File {0} not found. Please copy the FreeOTP backup in the given path.'.format(
+                args.filename
+            )
+        )
         sys.exit(1)
-    freak = FreakOTP(filename=args.filename,verbose=args.verbose)
+    freak = FreakOTP(filename=args.filename, verbose=args.verbose)
     if args.token:
         for token in freak.find(args.token):
             if freak.verbose:
@@ -260,6 +284,7 @@ def main():
     else:
         freak.menu()
         freak.prompt()
+
 
 if __name__ == "__main__":
     main()
