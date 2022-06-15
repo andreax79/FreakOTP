@@ -191,6 +191,8 @@ class FreakOTP(object):
             choice = input('Please make a choice: ')
         except KeyboardInterrupt:
             return
+        except EOFError:
+            return
         try:
             index = int(choice)
         except:
