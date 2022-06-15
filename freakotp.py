@@ -178,9 +178,13 @@ class FreakOTP(object):
         for i, item in enumerate(self.data['tokenOrder'], start=1):
             print('{0:2d}) {1}'.format(i, item))
 
-    def list(self):
-        for item in self.data['tokenOrder']:
-            print(item)
+    def list(self, calculate=False, value=None):
+        for i, item in enumerate(self.data['tokenOrder'], start=1):
+            if calculate:
+                token = self.get_token(i)
+                print(token.calculate(value=value), item)
+            else:
+                print(item)
 
     def prompt(self):
         try:
@@ -240,6 +244,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='FreakOTP is a command line two-factor authentication application.'
     )
+    commands_group = parser.add_mutually_exclusive_group()
     parser.add_argument(
         '-f',
         '--filename',
@@ -250,8 +255,11 @@ def main():
     parser.add_argument(
         '-v', '--verbose', dest='verbose', action='store_true', help='verbose output'
     )
-    parser.add_argument(
+    commands_group.add_argument(
         '-ls', dest='list', action='store_true', help='display token list'
+    )
+    commands_group.add_argument(
+        '-all', dest='all', action='store_true', help='display token'
     )
     parser.add_argument(
         '--uri', dest='uri', action='store_true', help='generate uri for token'
@@ -281,6 +289,8 @@ def main():
                 print(token.calculate())
     elif args.list:
         freak.list()
+    elif args.all:
+        freak.list(calculate=True)
     else:
         freak.menu()
         freak.prompt()
