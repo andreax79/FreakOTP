@@ -38,7 +38,7 @@ setup(
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-            'freakotp=freakotp:main',
+            'freakotp=freakotp.cli:main',
         ],
     },
     test_suite='tests',

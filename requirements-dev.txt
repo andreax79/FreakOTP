@@ -4,3 +4,4 @@ flake8
 coverage[toml]
 pytest-cov
 mypy
+twine<3.4

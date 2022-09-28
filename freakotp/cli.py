@@ -36,7 +36,7 @@ from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 __all__ = [
     "main",
     "FreakOTP",
