@@ -162,6 +162,10 @@ class FreakOTP(object):
         "Import FreeOTP backup into FreakOTP database"
         return self.token_db.import_json(json_filename, delete_existing_data)
 
+    def export_json(self, json_filename: Path) -> int:
+        "Export FreeOTP database using FreeOTP backup format"
+        return self.token_db.export_json(json_filename)
+
     def add_token(
         self,
         uri: Optional[str] = None,
@@ -274,6 +278,22 @@ def cmd_import(ctx: Context, delete_existing_data: bool, backup_filename: str) -
     freak = ctx.obj
     count = freak.import_json(Path(backup_filename), delete_existing_data)
     click.secho(f"{count} tokens imported")
+
+
+@cli.command(".export")
+@click.option(
+    "-b", "--backup-filename", help="FreeOTP backup filename", type=click.Path(exists=False, dir_okay=False), required=True
+)
+@click.pass_context
+def cmd_export(ctx: Context, backup_filename: str) -> None:
+    """
+    Export tokens
+
+    Example: freaktop .expot --backup-filename ./freakotp-backup.json
+    """
+    freak = ctx.obj
+    count = freak.export_json(Path(backup_filename))
+    click.secho(f"{count} tokens exported")
 
 
 @cli.command(".delete")

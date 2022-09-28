@@ -62,7 +62,7 @@ DEFAULT_PERIOD = 30
 DEFAULT_ALGORITHM = "SHA1"
 DEFAULT_DIGITS = 6
 
-JsonData = Dict[str, Union[str, int]]
+JsonData = Dict[str, Union[str, int, List[int], None]]
 
 
 class TokenType(Enum):
@@ -78,7 +78,7 @@ class EncodeType(Enum):
 
 
 class Token:
-    data: Union[str, Dict[str, Union[str, int]], None] = None
+    data: Union[str, JsonData, None] = None
 
     def __init__(
         self,
@@ -195,12 +195,12 @@ class Token:
     def to_dict(self, encode_type: EncodeType = EncodeType.INT_LIST) -> JsonData:
         "Return token as dict"
         if encode_type == EncodeType.INT_LIST:
-            secret = self.secret.to_int_list()
+            secret: Union[List[int], str] = self.secret.to_int_list()
         elif encode_type == EncodeType.HEX:
             secret = self.secret.to_hex()
         else:
             secret = self.secret.to_base32()
-        data = {
+        data: JsonData = {
             "type": self.type.value,
             "algorithm": self.algorithm,
             "counter": self.counter,
@@ -360,3 +360,51 @@ class TokenDb:
                     count = count + 1
                 connection.commit()
         return count
+
+    def export_json(self, json_filename: Path) -> int:
+        "Export FreeOTP database using FreeOTP backup format"
+        # with json_filename.open("r") as f:
+        # self.data = json.loads(f.read())
+
+        tokens: List[JsonData] = []
+        for token_obj in self.get_tokens():
+            token = token_obj.to_dict()
+            token["issuerInt"] = token["issuer"]
+            token["issuerExt"] = token["issuer"]
+            del token["issuer"]
+            tokens.append(token)
+        token_order: List[str] = [f"{token['issuerInt']}:{token['label']}" for token in tokens]
+        result = {"tokenOrder": token_order, "tokens": tokens}
+        with json_filename.open("w") as f:
+            json.dump(result, f, indent=2)
+        return len(tokens)
+
+        #
+        # count = 0
+        # with closing(self.open_db()) as connection:
+        #     with closing(connection.cursor()) as cursor:
+        #         if delete_existing_data:
+        #             cursor.execute(SQL_DROP_TABLE)
+        #         cursor.execute(SQL_CREATE_TABLE)
+        #         for token in self.data["tokens"]:
+        #             secret = Secret.from_int_list(token["secret"])
+        #             cursor.execute(
+        #                 SQL_INSERT,
+        #                 (
+        #                     token.get("type"),
+        #                     token.get("algo") or DEFAULT_ALGORITHM,
+        #                     token.get("counter"),
+        #                     token.get("digits") or DEFAULT_DIGITS,
+        #                     token.get("issuerInt"),
+        #                     token.get("issuerExt"),
+        #                     token.get("label"),
+        #                     token.get("period") or DEFAULT_PERIOD,
+        #                     token.get("exp_date"),
+        #                     token.get("pin"),
+        #                     token.get("serial"),
+        #                     secret.to_base32(),
+        #                 ),
+        #             )
+        #             count = count + 1
+        #         connection.commit()
+        # return count
