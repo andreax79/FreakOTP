@@ -32,6 +32,7 @@ import hashlib
 import urllib.parse
 import sqlite3
 import click
+from datetime import datetime
 from pathlib import Path
 from enum import Enum
 from contextlib import closing
@@ -103,7 +104,10 @@ class Token:
         self.rowid = rowid
         self.type = type
         self.algorithm = algorithm
-        self.counter = counter
+        if self.type == TokenType.HOTP:
+            self.counter = counter or 0
+        else:
+            self.counter = counter
         self.digits = digits
         self.issuer_int = issuer_int
         self.issuer_ext = issuer_ext
@@ -164,17 +168,18 @@ class Token:
         self.serial = None
         self.secret = Secret.from_base32(cast(str, query.get("secret")))
 
-    def calculate(self, value: Optional[int] = None) -> str:
+    def calculate(self, timestamp: Optional[Union[int, datetime]] = None, counter: Optional[int] = None) -> str:
         if self.type == TokenType.SECURID:
             return self._calculate_securid()
         algorithm = ALGORITHMS.get(self.algorithm, hashlib.sha1)
-        if value is None:
-            if self.type == TokenType.HOTP:
-                value = self.counter
-            else:  # TOTP
-                value = int(time.time())
-        if self.type == TokenType.TOTP:
-            value = int(value / self.period)
+        if self.type == TokenType.HOTP:
+            value = counter if counter is not None else self.counter
+        elif timestamp is not None and isinstance(timestamp, datetime):
+            value = timestamp.timestamp() // self.period
+        elif timestamp is not None:
+            value = timestamp // self.period
+        else:
+            value = int(int(time.time()) / self.period)
         t = struct.pack(">q", int(value))
         hmac_ = hmac.HMAC(self.secret.to_bytes(), t, algorithm).digest()
         offset = hmac_[-1] & 0x0F
@@ -215,9 +220,9 @@ class Token:
             data["algorithm"] = self.algorithm
         if self.digits:
             data["digits"] = self.digits
-        if self.period:
+        if self.period and self.type != TokenType.HOTP:
             data["period"] = self.period
-        if self.type == TokenType.HOTP and self.counter:
+        if self.type == TokenType.HOTP:
             data["counter"] = self.counter
         data["secret"] = self.secret.to_base32()
         if self.issuer:
@@ -235,12 +240,12 @@ class Token:
             result.append(f"{key}: {value}")
         return "\n".join(result)
 
-    def print_qrcode(self) -> None:
+    def print_qrcode(self, invert: bool = True) -> None:
         "Print token as qrcode"
         click.secho(f"{self}", fg="green")
         qr = qrcode.QRCode()
         qr.add_data(self.to_uri())
-        qr.print_ascii()
+        qr.print_ascii(invert=invert)
 
     def delete(self) -> None:
         "Delete this token"
@@ -264,7 +269,10 @@ class TokenDb:
         self.filename.parent.mkdir(parents=True, exist_ok=True)
 
     def open_db(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.filename)
+        connection = sqlite3.connect(self.filename)
+        with closing(connection.cursor()) as cursor:
+            cursor.execute(SQL_CREATE_TABLE)
+        return connection
 
     def get_tokens(self) -> List[Token]:
         result: List[Token] = []
@@ -304,6 +312,14 @@ class TokenDb:
                         token.secret.to_base32(),
                     ),
                 )
+                connection.commit()
+
+    def truncate(self) -> None:
+        "Delete all the tokens"
+        with closing(self.open_db()) as connection:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute(SQL_DROP_TABLE)
+                cursor.execute(SQL_CREATE_TABLE)
                 connection.commit()
 
     def import_json(self, json_filename: Path, delete_existing_data: bool = False) -> int:

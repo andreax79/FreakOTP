@@ -23,6 +23,7 @@
 # SOFTWARE.
 #
 
+from datetime import datetime
 import click
 from click.utils import make_str
 from click.core import Command, Context
@@ -30,6 +31,7 @@ from click.formatting import HelpFormatter
 from pathlib import Path
 from typing import List, Optional, Tuple
 import appdirs
+import pzp
 from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
@@ -67,63 +69,72 @@ class FreakOTPGroup(click.Group):
 
 @click.group("cli", invoke_without_command=True, cls=FreakOTPGroup, help=DESCRIPTION)
 @click.version_option(__version__)
-@click.option("-f", "--filename", help="Database path", default=DEFAULT_DB, type=click.Path())
+@click.option("-f", "--filename", help="Database path", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
 @click.option("-v", "--verbose", help="Verbose output", default=False, is_flag=True)
+@click.option("-c", "--counter", help="HOTP counter value", type=click.INT)
+@click.option("-t", "--time", help="TOTP timestamp", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
 @click.pass_context
-def cli(ctx: Context, filename: str, verbose: bool) -> None:
-    ctx.obj = FreakOTP(filename=Path(filename), verbose=verbose)
+def cli(ctx: Context, filename: str, verbose: bool, counter: Optional[int], time: Optional[datetime]) -> None:
+    ctx.obj = FreakOTP(filename=Path(filename), verbose=verbose, counter=counter, timestamp=time)
     if ctx.invoked_subcommand is None:
         freak = ctx.obj
         freak.menu()
-        freak.prompt()
 
 
 class FreakOTP(object):
 
     verbose: bool
     token_db: TokenDb
+    counter: Optional[int]
+    timestamp: Optional[datetime]
 
-    def __init__(self, filename: Path = DEFAULT_DB, verbose: bool = False):
+    def __init__(
+        self,
+        filename: Path = DEFAULT_DB,
+        verbose: bool = False,
+        counter: Optional[int] = None,
+        timestamp: Optional[datetime] = None,
+    ):
         self.verbose = verbose
         self.token_db = TokenDb(filename)
+        self.counter = counter
+        self.timestamp = timestamp
 
     def menu(self) -> None:
         "Display menu"
-        for i, item in enumerate(self.token_db.get_tokens(), start=1):
-            print(f"{i:2d}) {item}")
+        try:
+            token = pzp.pzp(
+                self.token_db.get_tokens(),
+                format_fn=lambda item: f"{item.rowid:2d}: {item}",
+                fullscreen=False,
+                keys_binding={"qrcode": ["ctrl-q"], "uri": ["ctrl-u"]},
+            )
+            if token is not None:
+                if self.verbose:
+                    click.secho(token.details(), fg="yellow")
+                print(token.calculate(timestamp=self.timestamp, counter=self.counter))
+        except pzp.CustomAction as action:
+            if action.action == "qrcode" and action.selected_item:
+                action.selected_item.print_qrcode()
+            elif action.action == "uri" and action.selected_item:
+                print(action.selected_item.to_uri())
 
-    def list(self, calculate: bool = False, long_format: bool = False, value: Optional[int] = None) -> None:
+    def list(self, calculate: bool = False, long_format: bool = False) -> None:
         "List tokens"
         for token in self.token_db.get_tokens():
             if calculate:
                 try:
-                    otp = token.calculate(value=value)
-                    print(f"{otp} {token}")
+                    otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
+                    if token.type == TokenType.HOTP and token.counter:
+                        print(f"{otp} {token} ({token.counter=})")
+                    else:
+                        print(f"{otp} {token}")
                 except ImportError:
                     pass
             elif long_format:
                 print(f"{token.rowid:>4} {token.type.value:7} {token.algorithm:6} {token.digits:>2} {token.period:>3} {token}")
             else:
                 print(token)
-
-    def prompt(self) -> None:
-        try:
-            choice = input("Please make a choice: ")
-        except KeyboardInterrupt:
-            return
-        except EOFError:
-            return
-        try:
-            index = int(choice)
-        except:
-            return
-        try:
-            token = self.get_token(index)
-        except KeyError:
-            print("Not found")
-        if self.verbose:
-            click.secho(token.details(), fg="yellow")
-        print(token.calculate())
 
     def get_token(self, index: int) -> Token:
         "Get token by index"
@@ -210,9 +221,10 @@ def cmd_ls(ctx: Context, long_format: bool) -> None:
 
 
 @cli.command(":qrcode")
+@click.option("-i", "--invert", help="Invert QR Code background/foreground colors", default=False, is_flag=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_qrcode(ctx: Context, tokens: Tuple[str]) -> None:
+def cmd_qrcode(ctx: Context, invert: bool, tokens: Tuple[str]) -> None:
     """
     Display token qrcodes
 
@@ -222,7 +234,7 @@ def cmd_qrcode(ctx: Context, tokens: Tuple[str]) -> None:
     for token in freak.find(tokens):
         if freak.verbose:
             click.secho(token.details(), fg="yellow")
-        token.print_qrcode()
+        token.print_qrcode(invert=invert)
 
 
 @cli.command(":uri")
@@ -320,12 +332,13 @@ def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
     freak = ctx.obj
     if tokens:
         for token in freak.find(tokens):
+            if freak.counter is not None and token.type == TokenType.HOTP:
+                token.counter = freak.counter
             if freak.verbose:
                 click.secho(token.details(), fg="yellow")
-            print(token.calculate())
+            print(token.calculate(timestamp=freak.timestamp, counter=freak.counter))
     else:
         freak.menu()
-        freak.prompt()
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -340,7 +353,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return EXIT_SUCCESS
     except SystemExit as err:
         return err.code
-    # except Exception as ex:
-    #     click.secho(f"{prog_name}: {ex}", fg="red")
-    #     return EXIT_FAILURE
-    #
+    except Exception as ex:
+        click.secho(f"{prog_name}: {ex}", fg="red")
+        return EXIT_FAILURE
