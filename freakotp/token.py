@@ -192,8 +192,14 @@ class Token:
 
         return cast(str, JSONTokenFile(data=self.to_dict()).get_token().now())
 
-    def to_dict(self) -> JsonData:
+    def to_dict(self, encode_type: EncodeType = EncodeType.INT_LIST) -> JsonData:
         "Return token as dict"
+        if encode_type == EncodeType.INT_LIST:
+            secret = self.secret.to_int_list()
+        elif encode_type == EncodeType.HEX:
+            secret = self.secret.to_hex()
+        else:
+            secret = self.secret.to_base32()
         data = {
             "type": self.type.value,
             "algorithm": self.algorithm,
@@ -202,7 +208,7 @@ class Token:
             "issuer": self.issuer,
             "label": self.label,
             "period": self.period,
-            "secret": self.secret.to_int_list(),
+            "secret": secret,
         }
         for key in ("exp_date", "pin", "serial"):
             if getattr(self, key) is not None:
@@ -236,7 +242,7 @@ class Token:
 
     def details(self) -> str:
         result: List[str] = []
-        for key, value in self.to_dict().items():
+        for key, value in self.to_dict(encode_type=EncodeType.BASE32).items():
             result.append(f"{key}: {value}")
         return "\n".join(result)
 

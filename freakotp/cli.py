@@ -57,11 +57,11 @@ EXIT_PARSER_ERROR = 2
 
 class FreakOTPGroup(click.Group):
     def resolve_command(self, ctx: Context, args: List[str]) -> Tuple[Optional[str], Optional[Command], List[str]]:
-        is_cmd = args and make_str(args[0]).startswith(":")
+        is_cmd = args and make_str(args[0]).startswith(".")
         if is_cmd:
             return super().resolve_command(ctx, args)
         else:
-            return ":default", self.get_command(ctx, ":default"), args
+            return ".default", self.get_command(ctx, ".default"), args
 
     def format_usage(self, ctx: Context, formatter: HelpFormatter) -> None:
         formatter.write_usage(ctx.command_path, "[OPTIONS] [COMMAND|[TOKENS]...] [ARGS]...")
@@ -107,6 +107,7 @@ class FreakOTP(object):
                 self.token_db.get_tokens(),
                 format_fn=lambda item: f"{item.rowid:2d}: {item}",
                 fullscreen=False,
+                layout="reverse-list",
                 keys_binding={"qrcode": ["ctrl-q"], "uri": ["ctrl-u"]},
             )
             if token is not None:
@@ -195,32 +196,32 @@ class FreakOTP(object):
         self.token_db.insert(token)
 
 
-@cli.command(":all")
+@cli.command(".all")
 @click.pass_context
 def cmd_all(ctx: Context) -> None:
     """
     Display token list
 
-    Example: freakotp :all
+    Example: freaktop .all
     """
     freak = ctx.obj
     freak.list(calculate=True)
 
 
-@cli.command(":ls")
+@cli.command(".ls")
 @click.option("-l", "--long", "long_format", help="Use a long listing format", default=False, is_flag=True)
 @click.pass_context
 def cmd_ls(ctx: Context, long_format: bool) -> None:
     """
     Display token list
 
-    Example: freakotp :ls
+    Example: freaktop .ls
     """
     freak = ctx.obj
     freak.list(long_format=long_format)
 
 
-@cli.command(":qrcode")
+@cli.command(".qrcode")
 @click.option("-i", "--invert", help="Invert QR Code background/foreground colors", default=False, is_flag=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
@@ -228,7 +229,7 @@ def cmd_qrcode(ctx: Context, invert: bool, tokens: Tuple[str]) -> None:
     """
     Display token qrcodes
 
-    Example: freakotp :qrcode token1
+    Example: freaktop .qrcode token1
     """
     freak = ctx.obj
     for token in freak.find(tokens):
@@ -237,14 +238,14 @@ def cmd_qrcode(ctx: Context, invert: bool, tokens: Tuple[str]) -> None:
         token.print_qrcode(invert=invert)
 
 
-@cli.command(":uri")
+@cli.command(".uri")
 @click.argument("tokens", nargs=-1)
 @click.pass_context
 def cmd_uri(ctx: Context, tokens: Tuple[str]) -> None:
     """
     Display token uri
 
-    Example: freakotp :uri token1
+    Example: freaktop .uri token1
     """
     freak = ctx.obj
     for token in freak.find(tokens):
@@ -253,27 +254,29 @@ def cmd_uri(ctx: Context, tokens: Tuple[str]) -> None:
         print(token.to_uri())
 
 
-@cli.command(":import")
+@cli.command(".import")
 @click.option(
     "--delete-existing-data",
     help="Delete existing data from the FreakOTP datbase",
     is_flag=True,
     default=False,
 )
-@click.option("-b", "--backup-filename", help="FreeOTP backup filename", type=click.Path())
+@click.option(
+    "-b", "--backup-filename", help="FreeOTP backup filename", type=click.Path(exists=True, dir_okay=False), required=True
+)
 @click.pass_context
 def cmd_import(ctx: Context, delete_existing_data: bool, backup_filename: str) -> None:
     """
     Import tokens from freakotp-backup.json
 
-    Example: freakotp :import --backup-filename ./freakotp-backup.json
+    Example: freaktop .import --backup-filename ./freakotp-backup.json
     """
     freak = ctx.obj
     count = freak.import_json(Path(backup_filename), delete_existing_data)
     click.secho(f"{count} tokens imported")
 
 
-@cli.command(":delete")
+@cli.command(".delete")
 @click.option("-f", "--force", help="Never prompt", default=False, is_flag=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
@@ -281,7 +284,7 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
     """
     Delete tokens
 
-    Example: freakotp :delete token1 token2
+    Example: freaktop .delete token1 token2
     """
     freak = ctx.obj
     for token in freak.find(tokens):
@@ -291,7 +294,7 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
             token.delete()
 
 
-@cli.command(":add")
+@cli.command(".add")
 @click.option("--type", "type_str", help="Token type", type=click.Choice(TokenType._member_names_), default=TokenType.TOTP.value)
 @click.option("-a", "--algorithm", help="Algorithm", type=click.Choice(list(ALGORITHMS)), default=DEFAULT_ALGORITHM)
 @click.option("-c", "--counter", help="HOTP counter value", type=click.INT)
@@ -315,7 +318,7 @@ def cmd_add(
     """
     Import a new token into the database
 
-    Example: freakotp :add
+    Example: freaktop .add
     """
     freak = ctx.obj
     secret = Secret.from_base32(secret_str)
@@ -325,7 +328,7 @@ def cmd_add(
     )
 
 
-@cli.command(":default", hidden=True)
+@cli.command(".default", hidden=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
 def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
@@ -339,6 +342,21 @@ def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
             print(token.calculate(timestamp=freak.timestamp, counter=freak.counter))
     else:
         freak.menu()
+
+
+@cli.command(".help", hidden=False)
+@click.argument("cmds", nargs=-1)
+@click.pass_context
+def cmd_help(ctx: Context, cmds: Tuple[str]) -> None:
+    """Show help and exit"""
+    if cmds:
+        for cmd in cmds:
+            command: Optional[click.Command] = ctx.parent.command.get_command(ctx=ctx.parent, cmd_name=cmd)
+            if command is not None:
+                click.echo(command.get_help(ctx=ctx), color=ctx.color)
+    else:
+        click.echo(ctx.parent.get_help(), color=ctx.color)
+    ctx.exit()
 
 
 def main(argv: Optional[List[str]] = None) -> int:

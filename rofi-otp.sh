@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-TOKEN=$(freakotp -ls | rofi -dmenu -p Token -i)
+TOKEN=$(freakotp .ls | rofi -dmenu -p Token -i)
 if [ -n "${TOKEN}" ]; then
     OTP=$(freakotp "${TOKEN}")
     echo -n "${OTP}" | xclip -selection clipboard
