@@ -1,3 +1,4 @@
 appdirs
 qrcode
 click
+pzp
