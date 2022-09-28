@@ -25,8 +25,12 @@ def test_rfc4226_test_vectors():
     secret = Secret.from_hex(SECRET)
     token = Token(type=TokenType.HOTP, algorithm="SHA1", digits=6, secret=secret)
     for test in tests:
-        assert token.calculate(value=test[0]) == test[1]
+        assert token.calculate(counter=test[0]) == test[1]
 
     for test in tests:
         token = Token(type=TokenType.HOTP, algorithm="SHA1", digits=6, secret=secret, counter=test[0])
         assert token.calculate() == test[1]
+
+    for test in tests:
+        token = Token(type=TokenType.HOTP, algorithm="SHA1", digits=6, secret=secret)
+        assert token.calculate(counter=test[0]) == test[1]

@@ -17,7 +17,7 @@ clean:
 	-rm -rf bin lib share pyvenv.cfg
 
 coverage:
-	python3 -m coverage run --module pytest && python3 -m coverage report -m
+	pytest --cov --cov-report=term-missing
 
 lint:
 	flake8 freakotp.py freakotp tests

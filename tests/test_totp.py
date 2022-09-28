@@ -60,4 +60,4 @@ def test_rfc6238_test_vectors():
     ]
     for test in tests:
         token = Token(type=TokenType.TOTP, algorithm=test[3], digits=len(test[2]), secret=SECRETS[test[3]])
-        assert token.calculate(test[0]) == test[2]
+        assert token.calculate(timestamp=test[0]) == test[2]
