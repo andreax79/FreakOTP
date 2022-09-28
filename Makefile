@@ -1,12 +1,13 @@
 SHELL=/bin/bash -e
 
 help:
-	@echo - make black ------ Format code
-	@echo - make clean ------ Clean virtual environment
-	@echo - make coverage --- Run tests coverage
-	@echo - make lint ------- Run lint
-	@echo - make test ------- Run test
-	@echo - make venv ------- Create virtual environment
+	@echo - make black ----------- Format code
+	@echo - make clean ----------- Clean virtual environment
+	@echo - make coverage -------- Run tests coverage
+	@echo - make lint ------------ Run lint
+	@echo - make readme-preview -- Readme preview
+	@echo - make test ------------ Run test
+	@echo - make venv ------------ Create virtual environment
 
 black:
 	black -S freakotp freakotp.py tests setup.py
@@ -32,3 +33,6 @@ venv:
 	python3 -m virtualenv .
 	. bin/activate; pip install -Ur requirements.txt
 	. bin/activate; pip install -Ur requirements-dev.txt
+
+readme-preview:
+	@. bin/activate; grip 0.0.0.0:8080
