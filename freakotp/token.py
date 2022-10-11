@@ -149,16 +149,19 @@ class Token:
         uri_components = urllib.parse.urlparse(uri)
         query = dict(urllib.parse.parse_qsl(uri_components.query))
         self.rowid = None
-        self.type = TokenType[uri_components.netloc.upper()]
+        try:
+            self.type = TokenType[uri_components.netloc.upper()]
+        except Exception:
+            raise Exception("Error parsing URI, invalid token type")
         self.algorithm = query.get("algorithm") or DEFAULT_ALGORITHM
         self.counter = int(cast(str, query.get("counter"))) if "counter" in query else 0
         self.digits = int(cast(str, query.get("digits"))) if "digest" in query else DEFAULT_DIGITS
         if ":" in uri_components.path:
-            self.issuer, self.label = uri_components.path.split(":", 1)
+            self.issuer, self.label = uri_components.path.strip("/").split(":", 1)
             self.issuer_int = self.issuer
             self.issuer_ext = self.issuer
         else:
-            self.label = uri_components.path
+            self.label = uri_components.path.strip("/")
             self.issuer = None
             self.issuer_int = None
             self.issuer_ext = None
@@ -263,7 +266,7 @@ class Token:
             return f"{self.issuer.strip()}:{self.label.strip()}"
         elif self.label:
             return self.label.strip()
-        elif self.rowid != None:
+        elif self.rowid is not None:
             return f"#{self.rowid}"  # type: ignore
         else:
             return "?"

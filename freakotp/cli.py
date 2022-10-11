@@ -29,14 +29,15 @@ from click.utils import make_str
 from click.core import Command, Context
 from click.formatting import HelpFormatter
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union, Sequence
 import appdirs
 import pzp
+from pzp.ansi import PURPLE, RESET
 from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.1"
+__version__ = "3.0.2"
 __all__ = [
     "main",
     "FreakOTP",
@@ -108,7 +109,8 @@ class FreakOTP(object):
                 format_fn=lambda item: f"{item.rowid:2d}: {item}",
                 fullscreen=False,
                 layout="reverse-list",
-                keys_binding={"qrcode": ["ctrl-q"], "uri": ["ctrl-u"]},
+                header_str=f"{PURPLE}ENTER{RESET} Show OTP  {PURPLE}^C{RESET} Exit  {PURPLE}^Q{RESET} QR-Code  {PURPLE}^U{RESET} URI  {PURPLE}^I{RESET} Insert  {PURPLE}^X{RESET} Delete",
+                keys_binding={"qrcode": ["ctrl-q"], "uri": ["ctrl-u"], "insert-token": ["ctrl-i"], "delete-token": ["ctrl-x"]},
             )
             if token is not None:
                 if self.verbose:
@@ -119,6 +121,10 @@ class FreakOTP(object):
                 action.selected_item.print_qrcode()
             elif action.action == "uri" and action.selected_item:
                 print(action.selected_item.to_uri())
+            elif action.action == "delete-token" and action.selected_item:
+                self.delete_tokens([action.selected_item])
+            elif action.action == "insert-token" and action.selected_item:
+                self.add_token()
 
     def list(self, calculate: bool = False, long_format: bool = False) -> None:
         "List tokens"
@@ -141,12 +147,13 @@ class FreakOTP(object):
         "Get token by index"
         try:
             return self.token_db.get_tokens()[index - 1]
-        except:
+        except Exception:
             raise KeyError(index)
 
-    def find(self, arg: str) -> List[Token]:
-        result: List[Token] = []
-        labels: List[str] = [x.strip() for x in ([arg] if isinstance(arg, str) else arg)]
+    def find(self, arg: Union[str, Token, Sequence[str], Sequence[Token]]) -> List[Token]:
+        args_list: Sequence[Union[str, Token]] = arg if isinstance(arg, (tuple, list)) else [arg]
+        result: List[Token] = [x for x in args_list if isinstance(x, Token)]
+        labels: List[str] = [x for x in args_list if isinstance(x, str)]
         for label in labels:
             if label.startswith("otpauth://"):
                 result.append(Token(uri=label))
@@ -170,7 +177,7 @@ class FreakOTP(object):
         self,
         uri: Optional[str] = None,
         rowid: Optional[int] = None,
-        type: TokenType = TokenType.TOTP,
+        type_str: Optional[str] = "TOTP",
         algorithm: str = DEFAULT_ALGORITHM,
         counter: Optional[int] = None,
         digits: int = DEFAULT_DIGITS,
@@ -179,12 +186,26 @@ class FreakOTP(object):
         issuer: Optional[str] = None,
         label: Optional[str] = None,
         period: int = DEFAULT_PERIOD,
-        secret: Optional[Secret] = None,
-    ) -> None:
+        secret_str: Optional[str] = None,
+    ) -> Token:
         "Add a token to the FreakOTP database"
+        self.title("Add token")
+        if not secret_str and not uri:
+            uri = click.prompt("URI (otpauth://)", default="", show_default=False)
+            if not uri:
+                type_str = click.prompt("Token type", type=click.Choice(TokenType._member_names_), default=type_str)
+                algorithm = click.prompt("Algorithm", type=click.Choice(list(ALGORITHMS)), default=algorithm)
+                if type_str == "HOTP":
+                    counter = click.prompt("HOTP counter value", type=click.INT, default=counter)
+                digits = click.prompt("Number of digits in one-time password", type=click.INT, default=digits)
+                issuer = click.prompt("Issuer", default=issuer)
+                label = click.prompt("Label", default=label)
+                period = click.prompt("Time-step duration in seconds", type=click.INT, default=period)
+                secret_str = click.prompt("Secret key", default=secret_str)
         token = Token(
+            uri=uri,
+            type=TokenType[type_str] if type_str else None,
             algorithm=algorithm,
-            type=type,
             counter=counter,
             digits=digits,
             issuer=issuer,
@@ -192,12 +213,32 @@ class FreakOTP(object):
             issuer_ext=issuer_ext,
             label=label,
             period=period,
-            secret=secret,
+            secret=Secret.from_base32(secret_str) if secret_str else None,
             token_db=self.token_db,
         )
         if self.verbose:
             click.secho(token.details(), fg="yellow")
         self.token_db.insert(token)
+        click.secho("Token added", fg="green")
+        return token
+
+    def delete_tokens(self, tokens: Tuple[str], force: bool = False) -> None:
+        "Delete tokens"
+        count = 0
+        self.title("Delete token")
+        for token in self.find(tokens):
+            if self.verbose:
+                click.secho(token.details(), fg="yellow")
+            if force or click.confirm(f"Do you want to remove {token} ?"):
+                token.delete()
+                count = count + 1
+        if count == 1:
+            click.secho("Token deleted", fg="green")
+        else:
+            click.secho(f"{count} tokens deleted", fg="green")
+
+    def title(self, title: str) -> None:
+        click.secho(f"{title:66}", bg="blue", fg="white", bold=True)
 
 
 @cli.command(".all")
@@ -277,7 +318,7 @@ def cmd_import(ctx: Context, delete_existing_data: bool, backup_filename: str) -
     """
     freak = ctx.obj
     count = freak.import_json(Path(backup_filename), delete_existing_data)
-    click.secho(f"{count} tokens imported")
+    click.secho(f"{count} tokens imported", fg="green")
 
 
 @cli.command(".export")
@@ -293,7 +334,7 @@ def cmd_export(ctx: Context, backup_filename: str) -> None:
     """
     freak = ctx.obj
     count = freak.export_json(Path(backup_filename))
-    click.secho(f"{count} tokens exported")
+    click.secho(f"{count} tokens exported", fg="green")
 
 
 @cli.command(".delete")
@@ -307,11 +348,7 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
     Example: freaktop .delete token1 token2
     """
     freak = ctx.obj
-    for token in freak.find(tokens):
-        if freak.verbose:
-            click.secho(token.details(), fg="yellow")
-        if force or click.confirm(f"Do you want to remove {token} ?"):
-            token.delete()
+    freak.delete_tokens(tokens, force)
 
 
 @cli.command(".add")
@@ -322,7 +359,8 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
 @click.option("-i", "--issuer", help="Issuer")
 @click.option("-l", "--label", help="Label")
 @click.option("-p", "--period", help="Time-step duration in seconds", type=click.INT, default=DEFAULT_PERIOD)
-@click.option("-s", "--secret", "secret_str", help="Secret key", required=True)
+@click.option("-s", "--secret", "secret_str", help="Secret key Base32")
+@click.option("-u", "--uri", help="URI (otpauth://)")
 @click.pass_context
 def cmd_add(
     ctx: Context,
@@ -333,7 +371,8 @@ def cmd_add(
     issuer: Optional[str],
     label: Optional[str],
     period: int,
-    secret_str: str,
+    secret_str: Optional[str],
+    uri: Optional[str],
 ) -> None:
     """
     Import a new token into the database
@@ -341,10 +380,16 @@ def cmd_add(
     Example: freaktop .add
     """
     freak = ctx.obj
-    secret = Secret.from_base32(secret_str)
-    type = TokenType[type_str]
     freak.add_token(
-        algorithm=algorithm, type=type, counter=counter, digits=digits, issuer=issuer, label=label, period=period, secret=secret
+        uri=uri,
+        algorithm=algorithm,
+        type_str=type_str,
+        counter=counter,
+        digits=digits,
+        issuer=issuer,
+        label=label,
+        period=period,
+        secret_str=secret_str,
     )
 
 
