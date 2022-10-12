@@ -278,7 +278,10 @@ class TokenDb:
         self.filename.parent.mkdir(parents=True, exist_ok=True)
 
     def open_db(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.filename)
+        try:
+            connection = sqlite3.connect(self.filename)
+        except TypeError:  # Python < 3.7
+            connection = sqlite3.connect(str(self.filename))
         with closing(connection.cursor()) as cursor:
             cursor.execute(SQL_CREATE_TABLE)
         return connection
@@ -381,33 +384,3 @@ class TokenDb:
         with json_filename.open("w") as f:
             json.dump(result, f, indent=2)
         return len(tokens)
-
-        #
-        # count = 0
-        # with closing(self.open_db()) as connection:
-        #     with closing(connection.cursor()) as cursor:
-        #         if delete_existing_data:
-        #             cursor.execute(SQL_DROP_TABLE)
-        #         cursor.execute(SQL_CREATE_TABLE)
-        #         for token in self.data["tokens"]:
-        #             secret = Secret.from_int_list(token["secret"])
-        #             cursor.execute(
-        #                 SQL_INSERT,
-        #                 (
-        #                     token.get("type"),
-        #                     token.get("algo") or DEFAULT_ALGORITHM,
-        #                     token.get("counter"),
-        #                     token.get("digits") or DEFAULT_DIGITS,
-        #                     token.get("issuerInt"),
-        #                     token.get("issuerExt"),
-        #                     token.get("label"),
-        #                     token.get("period") or DEFAULT_PERIOD,
-        #                     token.get("exp_date"),
-        #                     token.get("pin"),
-        #                     token.get("serial"),
-        #                     secret.to_base32(),
-        #                 ),
-        #             )
-        #             count = count + 1
-        #         connection.commit()
-        # return count
