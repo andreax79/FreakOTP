@@ -39,6 +39,9 @@ class Secret:
 
     @classmethod
     def from_base32(cls, secret: str) -> "Secret":
+        padding = len(secret) % 8
+        if padding:
+            secret = secret + "=" * (8 - padding)
         return Secret(base64.b32decode(secret))
 
     @classmethod
