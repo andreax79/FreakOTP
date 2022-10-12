@@ -142,7 +142,7 @@ class FreakOTP(object):
                 try:
                     otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
                     if token.type == TokenType.HOTP and token.counter:
-                        counter = f"({token.counter=})"
+                        counter = f"({token.counter})"
                     else:
                         counter = ""
                     if long_format:
