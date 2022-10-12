@@ -37,7 +37,7 @@ from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.2"
+__version__ = "3.0.3"
 __all__ = [
     "main",
     "FreakOTP",
@@ -70,13 +70,13 @@ class FreakOTPGroup(click.Group):
 
 @click.group("cli", invoke_without_command=True, cls=FreakOTPGroup, help=DESCRIPTION)
 @click.version_option(__version__)
-@click.option("-f", "--filename", help="Database path", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
+@click.option("--db", help="Database path", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
 @click.option("-v", "--verbose", help="Verbose output", default=False, is_flag=True)
 @click.option("-c", "--counter", help="HOTP counter value", type=click.INT)
 @click.option("-t", "--time", help="TOTP timestamp", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
 @click.pass_context
-def cli(ctx: Context, filename: str, verbose: bool, counter: Optional[int], time: Optional[datetime]) -> None:
-    ctx.obj = FreakOTP(filename=Path(filename), verbose=verbose, counter=counter, timestamp=time)
+def cli(ctx: Context, db: str, verbose: bool, counter: Optional[int], time: Optional[datetime]) -> None:
+    ctx.obj = FreakOTP(db_filename=Path(db), verbose=verbose, counter=counter, timestamp=time)
     if ctx.invoked_subcommand is None:
         freak = ctx.obj
         freak.menu()
@@ -91,13 +91,13 @@ class FreakOTP(object):
 
     def __init__(
         self,
-        filename: Path = DEFAULT_DB,
+        db_filename: Path = DEFAULT_DB,
         verbose: bool = False,
         counter: Optional[int] = None,
         timestamp: Optional[datetime] = None,
     ):
         self.verbose = verbose
-        self.token_db = TokenDb(filename)
+        self.token_db = TokenDb(db_filename)
         self.counter = counter
         self.timestamp = timestamp
 
@@ -126,16 +126,31 @@ class FreakOTP(object):
             elif action.action == "insert-token" and action.selected_item:
                 self.add_token()
 
-    def list(self, calculate: bool = False, long_format: bool = False) -> None:
+    def list(
+        self,
+        calculate: bool = False,
+        long_format: bool = False,
+        tokens: Union[None, str, Token, Sequence[str], Sequence[Token]] = None,
+    ) -> None:
         "List tokens"
-        for token in self.token_db.get_tokens():
+        if tokens:
+            tokens_list: List[Token] = self.find(tokens)
+        else:
+            tokens_list = self.token_db.get_tokens()
+        for token in tokens_list:
             if calculate:
                 try:
                     otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
                     if token.type == TokenType.HOTP and token.counter:
-                        print(f"{otp} {token} ({token.counter=})")
+                        counter = f"({token.counter=})"
                     else:
-                        print(f"{otp} {token}")
+                        counter = ""
+                    if long_format:
+                        print(
+                            f"{otp:8} {token.rowid:>4} {token.type.value:7} {token.algorithm:6} {token.digits:>2} {token.period:>3} {token} {counter}"
+                        )
+                    else:
+                        print(f"{otp} {token} {counter}")
                 except ImportError:
                     pass
             elif long_format:
@@ -166,7 +181,7 @@ class FreakOTP(object):
         return result
 
     def import_json(self, json_filename: Path, delete_existing_data: bool = False) -> int:
-        "Import FreeOTP backup into FreakOTP database"
+        "Import backup into FreakOTP database"
         return self.token_db.import_json(json_filename, delete_existing_data)
 
     def export_json(self, json_filename: Path) -> int:
@@ -241,29 +256,32 @@ class FreakOTP(object):
         click.secho(f"{title:66}", bg="blue", fg="white", bold=True)
 
 
-@cli.command(".all")
+@cli.command(".otp")
+@click.argument("tokens", nargs=-1)
+@click.option("-l", "--long", "long_format", help="Use a long listing format", default=False, is_flag=True)
 @click.pass_context
-def cmd_all(ctx: Context) -> None:
+def cmd_otp(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
     """
-    Display token list
+    Display OTPs
 
-    Example: freaktop .all
+    Example: freaktop .otp
     """
     freak = ctx.obj
-    freak.list(calculate=True)
+    freak.list(calculate=True, long_format=long_format, tokens=tokens)
 
 
 @cli.command(".ls")
+@click.argument("tokens", nargs=-1)
 @click.option("-l", "--long", "long_format", help="Use a long listing format", default=False, is_flag=True)
 @click.pass_context
-def cmd_ls(ctx: Context, long_format: bool) -> None:
+def cmd_ls(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
     """
     Display token list
 
     Example: freaktop .ls
     """
     freak = ctx.obj
-    freak.list(long_format=long_format)
+    freak.list(long_format=long_format, tokens=tokens)
 
 
 @cli.command(".qrcode")
@@ -306,34 +324,30 @@ def cmd_uri(ctx: Context, tokens: Tuple[str]) -> None:
     is_flag=True,
     default=False,
 )
-@click.option(
-    "-b", "--backup-filename", help="FreeOTP backup filename", type=click.Path(exists=True, dir_okay=False), required=True
-)
+@click.option("-f", "--filename", help="FreeOTP backup filename", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.pass_context
-def cmd_import(ctx: Context, delete_existing_data: bool, backup_filename: str) -> None:
+def cmd_import(ctx: Context, delete_existing_data: bool, filename: str) -> None:
     """
-    Import tokens from freakotp-backup.json
+    Import tokens from backup
 
-    Example: freaktop .import --backup-filename ./freakotp-backup.json
+    Example: freaktop .import --filename ./freakotp-backup.json
     """
     freak = ctx.obj
-    count = freak.import_json(Path(backup_filename), delete_existing_data)
+    count = freak.import_json(Path(filename), delete_existing_data)
     click.secho(f"{count} tokens imported", fg="green")
 
 
 @cli.command(".export")
-@click.option(
-    "-b", "--backup-filename", help="FreeOTP backup filename", type=click.Path(exists=False, dir_okay=False), required=True
-)
+@click.option("-f", "--filename", help="FreeOTP backup filename", type=click.Path(exists=False, dir_okay=False), required=True)
 @click.pass_context
-def cmd_export(ctx: Context, backup_filename: str) -> None:
+def cmd_export(ctx: Context, filename: str) -> None:
     """
     Export tokens
 
-    Example: freaktop .expot --backup-filename ./freakotp-backup.json
+    Example: freaktop .export --filename ./freakotp-backup.json
     """
     freak = ctx.obj
-    count = freak.export_json(Path(backup_filename))
+    count = freak.export_json(Path(filename))
     click.secho(f"{count} tokens exported", fg="green")
 
 

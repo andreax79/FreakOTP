@@ -123,9 +123,9 @@ class Token:
         self.serial = serial
         self.secret = secret or Secret()
         # Parse data or uri
-        if data is not None:
+        if data:
             self._parse_data(data)
-        elif uri is not None:
+        elif uri:
             self._parse_uri(uri)
 
     def _parse_data(self, data: JsonData) -> None:
