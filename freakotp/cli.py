@@ -37,7 +37,7 @@ from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.3"
+__version__ = "3.0.4"
 __all__ = [
     "main",
     "FreakOTP",
@@ -215,8 +215,9 @@ class FreakOTP(object):
                 digits = click.prompt("Number of digits in one-time password", type=click.INT, default=digits)
                 issuer = click.prompt("Issuer", default=issuer)
                 label = click.prompt("Label", default=label)
-                period = click.prompt("Time-step duration in seconds", type=click.INT, default=period)
-                secret_str = click.prompt("Secret key", default=secret_str)
+                if type_str != "HOTP":
+                    period = click.prompt("Time-step duration in seconds", type=click.INT, default=period)
+                secret_str = click.prompt("Secret key Base32", default=secret_str)
         token = Token(
             uri=uri,
             type=TokenType[type_str] if type_str else None,

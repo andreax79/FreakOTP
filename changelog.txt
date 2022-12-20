@@ -4,3 +4,24 @@
 
 2019-03-01
 
+
+## 3.0.3
+
+2022-10-12
+
+### Changed
+
+- Accept secret without padding
+
+### Added
+
+- Tests
+
+
+## 3.0.4
+
+2022-12-20
+
+### Changed
+
+- Accept Base 32 secret with spaces

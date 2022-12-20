@@ -39,6 +39,7 @@ class Secret:
 
     @classmethod
     def from_base32(cls, secret: str) -> "Secret":
+        secret = secret.replace(" ", "").upper()
         padding = len(secret) % 8
         if padding:
             secret = secret + "=" * (8 - padding)
@@ -68,3 +69,6 @@ class Secret:
 
     def __ne__(self, other: Any) -> bool:
         return not self.__eq__(other)
+
+    def __len__(self) -> int:
+        return len(self.secret)
