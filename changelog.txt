@@ -25,3 +25,12 @@
 ### Changed
 
 - Accept Base 32 secret with spaces
+
+
+## 3.0.5
+
+2023-03-01
+
+### Changed
+
+- Replace click.prompt with pzp.prompt

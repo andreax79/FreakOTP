@@ -37,7 +37,7 @@ from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.4"
+__version__ = "3.0.5"
 __all__ = [
     "main",
     "FreakOTP",
@@ -206,18 +206,33 @@ class FreakOTP(object):
         "Add a token to the FreakOTP database"
         self.title("Add token")
         if not secret_str and not uri:
-            uri = click.prompt("URI (otpauth://)", default="", show_default=False)
-            if not uri:
-                type_str = click.prompt("Token type", type=click.Choice(TokenType._member_names_), default=type_str)
-                algorithm = click.prompt("Algorithm", type=click.Choice(list(ALGORITHMS)), default=algorithm)
+            uri_or_secret = pzp.prompt("Secret key Base32 or URI (otpauth://)", show_default=False).strip()
+            if uri_or_secret.startswith("otpauth"):
+                uri = uri_or_secret
+                secret: Secret = None
+            else:
+                secret = Secret.from_base32(uri_or_secret)
+                issuer = pzp.prompt("Issuer", default=issuer)
+                label = pzp.prompt("Label", default=label)
+                type_str = pzp.pzp(
+                    header_str="Token type:",
+                    layout="reverse-list",
+                    candidates=TokenType._member_names_,
+                    fullscreen=False,
+                )
+                print(f"Token type: {type_str}")
+                algorithm = pzp.pzp(
+                    header_str="Algorithm:",
+                    layout="reverse-list",
+                    candidates=list(ALGORITHMS),
+                    fullscreen=False,
+                )
+                print(f"Algorithm: {algorithm}")
                 if type_str == "HOTP":
-                    counter = click.prompt("HOTP counter value", type=click.INT, default=counter)
-                digits = click.prompt("Number of digits in one-time password", type=click.INT, default=digits)
-                issuer = click.prompt("Issuer", default=issuer)
-                label = click.prompt("Label", default=label)
+                    counter = pzp.prompt("HOTP counter value", type=click.INT, default=counter)
+                digits = pzp.prompt("Number of digits in one-time password", type=click.INT, default=digits)
                 if type_str != "HOTP":
-                    period = click.prompt("Time-step duration in seconds", type=click.INT, default=period)
-                secret_str = click.prompt("Secret key Base32", default=secret_str)
+                    period = pzp.prompt("Time-step duration in seconds", type=click.INT, default=period)
         token = Token(
             uri=uri,
             type=TokenType[type_str] if type_str else None,
@@ -229,7 +244,7 @@ class FreakOTP(object):
             issuer_ext=issuer_ext,
             label=label,
             period=period,
-            secret=Secret.from_base32(secret_str) if secret_str else None,
+            secret=secret,
             token_db=self.token_db,
         )
         if self.verbose:

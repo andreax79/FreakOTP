@@ -1,4 +1,4 @@
 appdirs
 qrcode
 click
-pzp
+pzp>=0.0.21
