@@ -1,13 +1,24 @@
 # FreakOTP changelog
 
-## 1.0
+## [3.0.6] - 2023-12-04
 
-2019-03-01
+### Added
 
+- Copy OTP code into the clipboard
 
-## 3.0.3
+## [3.0.5] - 2023-03-01
 
-2022-10-12
+### Changed
+
+- Replace click.prompt with pzp.prompt
+
+## [3.0.4] - 2022-12-20
+
+### Changed
+
+- Accept Base 32 secret with spaces
+
+## [3.0.3] - 2022-10-12
 
 ### Changed
 
@@ -17,20 +28,14 @@
 
 - Tests
 
+## [3.0.2] - 2022-10-11
 
-## 3.0.4
+### Added
 
-2022-12-20
+- Add tokens
 
-### Changed
+## [1.0] - 2019-03-01
 
-- Accept Base 32 secret with spaces
+### Added
 
-
-## 3.0.5
-
-2023-03-01
-
-### Changed
-
-- Replace click.prompt with pzp.prompt
+- Initial release
