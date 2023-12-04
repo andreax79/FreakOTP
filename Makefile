@@ -2,6 +2,7 @@ SHELL=/bin/bash -e
 
 help:
 	@echo - make black ----------- Format code
+	@echo - make isort ----------- Sort imports
 	@echo - make clean ----------- Clean virtual environment
 	@echo - make coverage -------- Run tests coverage
 	@echo - make lint ------------ Run lint
@@ -9,7 +10,10 @@ help:
 	@echo - make test ------------ Run test
 	@echo - make venv ------------ Create virtual environment
 
-black:
+isort:
+	isort --profile black freakotp freakotp.py tests setup.py
+
+black: isort
 	black -S freakotp freakotp.py tests setup.py
 
 clean:

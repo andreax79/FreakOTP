@@ -1,6 +1,7 @@
-from pathlib import Path
 import shlex
-from freakotp.cli import main, EXIT_SUCCESS, EXIT_PARSER_ERROR
+from pathlib import Path
+
+from freakotp.cli import EXIT_PARSER_ERROR, EXIT_SUCCESS, main
 
 DB_PATH = Path(__file__).parent / 'test.db'
 

@@ -23,21 +23,31 @@
 # SOFTWARE.
 #
 
-import os
 import base64
+import os
 import sys
 from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Sequence, Tuple, Union
+
+import appdirs
 import click
-from click.utils import make_str
+import pzp
 from click.core import Command, Context
 from click.formatting import HelpFormatter
-from pathlib import Path
-from typing import List, Optional, Tuple, Union, Sequence
-import appdirs
-import pzp
+from click.utils import make_str
 from pzp.ansi import PURPLE, RESET
+
 from .secret import Secret
-from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
+from .token import (
+    ALGORITHMS,
+    DEFAULT_ALGORITHM,
+    DEFAULT_DIGITS,
+    DEFAULT_PERIOD,
+    Token,
+    TokenDb,
+    TokenType,
+)
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
 __version__ = "3.0.6"

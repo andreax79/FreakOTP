@@ -13,3 +13,6 @@ source = ["freakotp"]
 
 [tool.coverage.report]
 exclude_lines = [ "# pragma: no cover", "if TYPE_CHECKING:" ]
+
+[tool.isort]
+profile = "black"

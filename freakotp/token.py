@@ -23,23 +23,32 @@
 # SOFTWARE.
 #
 
-import math
-import json
-import time
-import hmac
-import struct
 import hashlib
-import urllib.parse
+import hmac
+import json
+import math
 import sqlite3
-import click
-from datetime import datetime
-from pathlib import Path
-from enum import Enum
+import struct
+import time
+import urllib.parse
 from contextlib import closing
-from typing import cast, Dict, List, Optional, Union
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Optional, Union, cast
+
+import click
 import qrcode
-from .sql import SQL_DROP_TABLE, SQL_CREATE_TABLE, SQL_INSERT, SQL_DELETE, SQL_SELECT_TOKENS, TOKEN_COLUMNS
+
 from .secret import Secret
+from .sql import (
+    SQL_CREATE_TABLE,
+    SQL_DELETE,
+    SQL_DROP_TABLE,
+    SQL_INSERT,
+    SQL_SELECT_TOKENS,
+    TOKEN_COLUMNS,
+)
 
 __all__ = [
     "Token",
