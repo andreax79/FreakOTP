@@ -35,10 +35,11 @@ Usage: freakotp [OPTIONS] [COMMAND|[TOKENS]...] [ARGS]...
 
 Options:
   --version                       Show the version and exit.
-  --db PATH                       Database path
-  -v, --verbose                   Verbose output
-  -c, --counter INTEGER           HOTP counter value
-  -t, --time [%Y-%m-%dT%H:%M:%S]  TOTP timestamp
+  --db PATH                       Database path.
+  -v, --verbose                   Verbose output.
+  -c, --counter INTEGER           HOTP counter value.
+  -t, --time [%Y-%m-%dT%H:%M:%S]  TOTP timestamp.
+  --copy / --no-copy              Copy the code into the clipboard.
   --help                          Show this message and exit.
 
 Commands:
@@ -118,7 +119,8 @@ Using the interactive gui:
 - **CTRL-I** add a new token
 - **CTRL-X** delete the selected token
 
-Without a command, `freakotp` generates the OTP codes for the matching tokens.
+Without a command, `freakotp` generates the OTP codes for the matching tokens and
+copies the first code into the clipboard.
 
 ```
 $ freakotp.py loop

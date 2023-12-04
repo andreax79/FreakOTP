@@ -23,6 +23,9 @@
 # SOFTWARE.
 #
 
+import os
+import base64
+import sys
 from datetime import datetime
 import click
 from click.utils import make_str
@@ -37,7 +40,7 @@ from .secret import Secret
 from .token import Token, TokenDb, TokenType, ALGORITHMS, DEFAULT_PERIOD, DEFAULT_ALGORITHM, DEFAULT_DIGITS
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.5"
+__version__ = "3.0.6"
 __all__ = [
     "main",
     "FreakOTP",
@@ -70,24 +73,25 @@ class FreakOTPGroup(click.Group):
 
 @click.group("cli", invoke_without_command=True, cls=FreakOTPGroup, help=DESCRIPTION)
 @click.version_option(__version__)
-@click.option("--db", help="Database path", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
-@click.option("-v", "--verbose", help="Verbose output", default=False, is_flag=True)
-@click.option("-c", "--counter", help="HOTP counter value", type=click.INT)
-@click.option("-t", "--time", help="TOTP timestamp", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
+@click.option("--db", help="Database path.", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
+@click.option("-v", "--verbose", help="Verbose output.", default=False, is_flag=True)
+@click.option("-c", "--counter", help="HOTP counter value.", type=click.INT)
+@click.option("-t", "--time", help="TOTP timestamp.", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
+@click.option("--copy/--no-copy", help="Copy the code into the clipboard.", default=True, is_flag=True)
 @click.pass_context
-def cli(ctx: Context, db: str, verbose: bool, counter: Optional[int], time: Optional[datetime]) -> None:
-    ctx.obj = FreakOTP(db_filename=Path(db), verbose=verbose, counter=counter, timestamp=time)
+def cli(ctx: Context, db: str, verbose: bool, counter: Optional[int], time: Optional[datetime], copy: bool) -> None:
+    ctx.obj = FreakOTP(db_filename=Path(db), verbose=verbose, counter=counter, timestamp=time, copy=copy)
     if ctx.invoked_subcommand is None:
         freak = ctx.obj
         freak.menu()
 
 
 class FreakOTP(object):
-
     verbose: bool
     token_db: TokenDb
     counter: Optional[int]
     timestamp: Optional[datetime]
+    copy: bool
 
     def __init__(
         self,
@@ -95,11 +99,13 @@ class FreakOTP(object):
         verbose: bool = False,
         counter: Optional[int] = None,
         timestamp: Optional[datetime] = None,
+        copy: bool = True,
     ):
         self.verbose = verbose
         self.token_db = TokenDb(db_filename)
         self.counter = counter
         self.timestamp = timestamp
+        self.copy = copy
 
     def menu(self) -> None:
         "Display menu"
@@ -115,7 +121,9 @@ class FreakOTP(object):
             if token is not None:
                 if self.verbose:
                     click.secho(token.details(), fg="yellow")
-                print(token.calculate(timestamp=self.timestamp, counter=self.counter))
+                otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
+                self.copy_into_clipboard(otp)
+                print(otp)
         except pzp.CustomAction as action:
             if action.action == "qrcode" and action.selected_item:
                 action.selected_item.print_qrcode()
@@ -137,10 +145,12 @@ class FreakOTP(object):
             tokens_list: List[Token] = self.find(tokens)
         else:
             tokens_list = self.token_db.get_tokens()
-        for token in tokens_list:
+        for i, token in enumerate(tokens_list):
             if calculate:
                 try:
                     otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
+                    if i == 0:
+                        self.copy_into_clipboard(otp)
                     if token.type == TokenType.HOTP and token.counter:
                         counter = f"({token.counter})"
                     else:
@@ -270,6 +280,16 @@ class FreakOTP(object):
 
     def title(self, title: str) -> None:
         click.secho(f"{title:66}", bg="blue", fg="white", bold=True)
+
+    def copy_into_clipboard(self, otp: str) -> None:
+        "Copy data into the clipboard"
+        if self.copy:
+            data = base64.b64encode(otp.encode("utf-8")).decode("ascii")
+            data = f"\033]52;c;{data}\a"
+            if "TMUX" in os.environ:
+                data = f"\033Ptmux;\033{data}\033\\"
+            sys.stdout.write(data)
+            sys.stdout.flush()
 
 
 @cli.command(".otp")
@@ -429,12 +449,15 @@ def cmd_add(
 def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
     freak = ctx.obj
     if tokens:
-        for token in freak.find(tokens):
+        for i, token in enumerate(freak.find(tokens)):
             if freak.counter is not None and token.type == TokenType.HOTP:
                 token.counter = freak.counter
             if freak.verbose:
                 click.secho(token.details(), fg="yellow")
-            print(token.calculate(timestamp=freak.timestamp, counter=freak.counter))
+            otp = token.calculate(timestamp=freak.timestamp, counter=freak.counter)
+            if i == 0:  # copy the first code into the clipboard
+                freak.copy_into_clipboard(otp)
+            print(otp)
     else:
         freak.menu()
 
