@@ -34,7 +34,7 @@ typecheck:
 	mypy --strict --no-warn-unused-ignores freakotp
 
 venv:
-	python3 -m virtualenv .
+	python3 -m virtualenv . || python3 -m venv .
 	. bin/activate; pip install -Ur requirements.txt
 	. bin/activate; pip install -Ur requirements-dev.txt
 
