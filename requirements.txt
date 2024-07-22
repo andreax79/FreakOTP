@@ -2,3 +2,4 @@ appdirs
 qrcode
 click
 pzp>=0.0.21
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
