@@ -47,6 +47,7 @@ from .sql import (
     SQL_DROP_TABLE,
     SQL_INSERT,
     SQL_SELECT_TOKENS,
+    SQL_UPDATE,
     TOKEN_COLUMNS,
 )
 
@@ -199,6 +200,31 @@ class Token:
         frmt = "{0:0%dd}" % self.digits
         return frmt.format((code & 0x7FFFFFFF) % int(math.pow(10, self.digits)))
 
+    def time_left(self, for_time: Union[int, datetime, None] = None) -> int:
+        """
+        Time until next token
+
+        :returns: seconds
+        """
+        if self.type == TokenType.SECURID:
+            from securid.jsontoken import JSONTokenFile
+
+            token = JSONTokenFile(data=self.to_dict()).get_token()
+            return token.time_left(for_time)
+
+        elif self.type == TokenType.TOTP:
+            if for_time is None:
+                for_time = datetime.utcnow()
+            elif not isinstance(for_time, datetime):
+                for_time = datetime.utcfromtimestamp(int(for_time))
+            result = (self.period - for_time.second) % self.period
+            if result == 0:
+                result = self.period
+            return result
+
+        else:
+            return ""
+
     def _calculate_securid(self) -> str:
         from securid.jsontoken import JSONTokenFile
 
@@ -331,6 +357,30 @@ class TokenDb:
                         token.pin,
                         token.serial,
                         token.secret.to_base32(),
+                    ),
+                )
+                connection.commit()
+
+    def update(self, token: Token) -> None:
+        "Update a token in the database"
+        with closing(self.open_db()) as connection:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute(
+                    SQL_UPDATE,
+                    (
+                        token.type.value,
+                        token.algorithm,
+                        token.counter,
+                        token.digits,
+                        token.issuer_int,
+                        token.issuer_ext,
+                        token.label,
+                        token.period,
+                        token.exp_date,
+                        token.pin,
+                        token.serial,
+                        token.secret.to_base32(),
+                        token.rowid,
                     ),
                 )
                 connection.commit()

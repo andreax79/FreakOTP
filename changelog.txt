@@ -1,5 +1,11 @@
 # FreakOTP changelog
 
+## [3.0.7] - 2024-09-20
+
+### Added
+
+- Edit tokens
+
 ## [3.0.6] - 2023-12-04
 
 ### Added

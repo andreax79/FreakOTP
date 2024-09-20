@@ -26,6 +26,7 @@
 import base64
 import os
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
@@ -50,7 +51,7 @@ from .token import (
 )
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.0.6"
+__version__ = "3.0.7"
 __all__ = [
     "main",
     "FreakOTP",
@@ -67,6 +68,22 @@ DEFAULT_DB = CONFIG_DIR / "freakotp.db"
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EXIT_PARSER_ERROR = 2
+
+
+@dataclass
+class KeyBinding:
+    binding: str
+    label: str
+
+    @property
+    def bind(self):
+        return self.binding not in ("enter", "cancel")
+
+    def __str__(self) -> str:
+        if self.binding == "enter":
+            return "ENTER"
+        else:
+            return "^" + self.binding[-1].upper()
 
 
 class FreakOTPGroup(click.Group):
@@ -102,6 +119,15 @@ class FreakOTP(object):
     counter: Optional[int]
     timestamp: Optional[datetime]
     copy: bool
+    key_bindings = {
+        "enter": KeyBinding(binding="enter", label="Show OTP"),
+        "cancel": KeyBinding(binding="ctrl-c", label="Exit"),
+        "qrcode": KeyBinding(binding="ctrl-q", label="QR-Code"),
+        "uri": KeyBinding(binding="ctrl-u", label="URI"),
+        "insert-token": KeyBinding(binding="ctrl-i", label="Insert"),
+        "edit-token": KeyBinding(binding="ctrl-o", label="Edit"),
+        "delete-token": KeyBinding(binding="ctrl-x", label="Delete"),
+    }
 
     def __init__(
         self,
@@ -121,12 +147,13 @@ class FreakOTP(object):
         "Display menu"
         try:
             token = pzp.pzp(
-                self.token_db.get_tokens(),
+                self.token_db.get_tokens,
                 format_fn=lambda item: f"{item.rowid:2d}: {item}",
                 fullscreen=False,
                 layout="reverse-list",
-                header_str=f"{PURPLE}ENTER{RESET} Show OTP  {PURPLE}^C{RESET} Exit  {PURPLE}^Q{RESET} QR-Code  {PURPLE}^U{RESET} URI  {PURPLE}^I{RESET} Insert  {PURPLE}^X{RESET} Delete",
-                keys_binding={"qrcode": ["ctrl-q"], "uri": ["ctrl-u"], "insert-token": ["ctrl-i"], "delete-token": ["ctrl-x"]},
+                header_str="  ".join([f"{PURPLE}{x}{RESET} {x.label}" for x in self.key_bindings.values()]),
+                keys_binding=(dict([(k, [v.binding]) for k, v in self.key_bindings.items() if v.bind])),
+                auto_refresh=1,
             )
             if token is not None:
                 if self.verbose:
@@ -143,6 +170,8 @@ class FreakOTP(object):
                 self.delete_tokens([action.selected_item])
             elif action.action == "insert-token" and action.selected_item:
                 self.add_token()
+            elif action.action == "edit-token" and action.selected_item:
+                self.edit_token(action.selected_item)
 
     def list(
         self,
@@ -271,6 +300,40 @@ class FreakOTP(object):
             click.secho(token.details(), fg="yellow")
         self.token_db.insert(token)
         click.secho("Token added", fg="green")
+        return token
+
+    def edit_token(self, token: Token) -> Token:
+        "Edit a token"
+        self.title(f"Edit token {token}")
+        token.secret = Secret.from_base32(pzp.prompt("Secret", default=token.secret.to_base32()))
+        token.issuer = pzp.prompt("Issuer", default=token.issuer)
+        token.label = pzp.prompt("Label", default=token.label)
+        type_str = pzp.pzp(
+            header_str="Token type:",
+            layout="reverse-list",
+            candidates=TokenType._member_names_,
+            input=token.type.value,
+            fullscreen=False,
+        )
+        token.type = TokenType[type_str] if type_str else None
+        print(f"Token type: {type_str}")
+        token.algorithm = pzp.pzp(
+            header_str="Algorithm:",
+            layout="reverse-list",
+            candidates=list(ALGORITHMS),
+            input=token.algorithm,
+            fullscreen=False,
+        )
+        print(f"Algorithm: {token.algorithm}")
+        if type_str == "HOTP":
+            token.counter = pzp.prompt("HOTP counter value", type=click.INT, default=token.counter)
+        token.digits = pzp.prompt("Number of digits in one-time password", type=click.INT, default=token.digits)
+        if type_str != "HOTP":
+            token.period = pzp.prompt("Time-step duration in seconds", type=click.INT, default=token.period)
+        if self.verbose:
+            click.secho(token.details(), fg="yellow")
+        self.token_db.update(token)
+        click.secho("Token updated", fg="green")
         return token
 
     def delete_tokens(self, tokens: Tuple[str], force: bool = False) -> None:
@@ -409,6 +472,20 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
     """
     freak = ctx.obj
     freak.delete_tokens(tokens, force)
+
+
+@cli.command(".edit")
+@click.argument("tokens", nargs=-1)
+@click.pass_context
+def cmd_edit(ctx: Context, tokens: Tuple[str]) -> None:
+    """
+    Edit tokens
+
+    Example: freaktop .edit token1
+    """
+    freak = ctx.obj
+    for token in freak.find(tokens):
+        freak.edit_token(token)
 
 
 @cli.command(".add")

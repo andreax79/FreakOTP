@@ -45,6 +45,7 @@ Options:
 Commands:
   .add     Import a new token into the database
   .delete  Delete tokens
+  .edit    Edit tokens
   .export  Export tokens
   .help    Show help and exit
   .import  Import tokens from backup
@@ -84,7 +85,7 @@ You can generate OTP code from existing token, adding new token or delete existi
 
 ```
 $ freakotp
-ENTER Show OTP  ^C Exit  ^Q QR-Code  ^U URI  ^I Insert  ^X Delete
+ENTER Show OTP  ^C Exit  ^Q QR-Code  ^U URI  ^I Insert  ^O Edit  ^X Delete
 >  1: roof:toll
    2: mental:suggestion
    3: congress:originally
@@ -117,6 +118,7 @@ Using the interactive gui:
 - **CTRL-Q** diplay the selected token QR Code
 - **CTRL-U** export the selected token as URI
 - **CTRL-I** add a new token
+- **CTRL-O** edit the selected token
 - **CTRL-X** delete the selected token
 
 Without a command, `freakotp` generates the OTP codes for the matching tokens and
@@ -191,6 +193,23 @@ Delete token
 Do you want to remove array:depend ? [y/N]: n
 Do you want to remove firm:spoken ? [y/N]: y
 Token deleted
+```
+
+### freakotp .edit
+
+The `freakotp .edit` command edit all matching tokens.
+
+```
+$ .edit mental:suggestion
+Edit token mental:suggestion
+Secret [KESEPY2AIMAAE23OKRKZJIDFNA======]:
+Issuer [mental]:
+Label [suggestion]:
+Token type: TOTP
+Algorithm: SHA1
+Number of digits in one-time password [6]:
+Time-step duration in seconds [30]:
+Token updated
 ```
 
 ### freakotp .export

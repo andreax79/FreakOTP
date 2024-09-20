@@ -33,9 +33,9 @@ TOKEN_COLUMNS = [
     "issuer_ext",
     "label",
     "period",
-    "exp_date",  # SecurID token
-    "pin",  # SecurID token
-    "serial",  # SecurID token
+    "exp_date",  # SecurID token expiration date
+    "pin",  # SecurID token pin
+    "serial",  # SecurID token serial
     "secret",
 ]
 SQL_DROP_TABLE = "drop table token"
@@ -60,3 +60,20 @@ values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 SQL_DELETE = "delete from token where rowid=?"
 SQL_SELECT_TOKENS = f"select {','.join(TOKEN_COLUMNS)} from token"
+SQL_UPDATE = """
+update token
+set
+    type=?,
+    algo=?,
+    counter=?,
+    digits=?,
+    issuer_int=?,
+    issuer_ext=?,
+    label=?,
+    period=?,
+    exp_date=?,
+    pin=?,
+    serial=?,
+    secret=?
+where rowid=?
+"""
