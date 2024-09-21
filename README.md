@@ -115,7 +115,7 @@ Using the interactive gui:
 - **UP** / **PG UP** / **DOWN** / **PG DOWN** to move cursor up and down
 - **ENTER** to display OTP code of the selected token
 - **CTRL-C** / **ESC** to exit
-- **CTRL-Q** diplay the selected token QR Code
+- **CTRL-Q** display the selected token QR Code
 - **CTRL-U** export the selected token as URI
 - **CTRL-I** add a new token
 - **CTRL-O** edit the selected token

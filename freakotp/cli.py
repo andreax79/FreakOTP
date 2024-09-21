@@ -429,7 +429,7 @@ def cmd_uri(ctx: Context, tokens: Tuple[str]) -> None:
 @cli.command(".import")
 @click.option(
     "--delete-existing-data",
-    help="Delete existing data from the FreakOTP datbase",
+    help="Delete existing data from the FreakOTP database",
     is_flag=True,
     default=False,
 )
