@@ -30,15 +30,16 @@ import math
 import sqlite3
 import struct
 import time
+import typing as t
 import urllib.parse
 from contextlib import closing
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union, cast
+from typing import cast
 
 import click
-import qrcode
+import qrcode  # type: ignore
 
 from .secret import Secret
 from .sql import (
@@ -72,7 +73,7 @@ DEFAULT_PERIOD = 30
 DEFAULT_ALGORITHM = "SHA1"
 DEFAULT_DIGITS = 6
 
-JsonData = Dict[str, Union[str, int, List[int], None]]
+JsonData = t.Dict[str, t.Union[str, int, t.List[int], None]]
 
 
 class TokenType(Enum):
@@ -88,27 +89,42 @@ class EncodeType(Enum):
 
 
 class Token:
-    data: Union[str, JsonData, None] = None
+    data: t.Union[str, JsonData, None] = None
+    token_db: t.Optional["TokenDb"] = None
+    rowid: t.Optional[int] = None
+    type: TokenType = TokenType.TOTP
+    algorithm: str = DEFAULT_ALGORITHM
+    counter: t.Optional[int] = None
+    digits: int = DEFAULT_DIGITS
+    issuer_int: t.Optional[str] = None
+    issuer_ext: t.Optional[str] = None
+    issuer: t.Optional[str] = None
+    label: t.Optional[str] = None
+    period: int = DEFAULT_PERIOD
+    exp_date: t.Optional[str] = None
+    pin: t.Optional[str] = None
+    serial: t.Optional[str] = None
+    secret: Secret = Secret()
 
     def __init__(
         self,
-        data: Optional[JsonData] = None,
-        uri: Optional[str] = None,
-        rowid: Optional[int] = None,
+        data: t.Optional[JsonData] = None,
+        uri: t.Optional[str] = None,
+        rowid: t.Optional[int] = None,
         type: TokenType = TokenType.TOTP,
         algorithm: str = DEFAULT_ALGORITHM,
-        counter: Optional[int] = None,
+        counter: t.Optional[int] = None,
         digits: int = DEFAULT_DIGITS,
-        issuer_int: Optional[str] = None,
-        issuer_ext: Optional[str] = None,
-        issuer: Optional[str] = None,
-        label: Optional[str] = None,
+        issuer_int: t.Optional[str] = None,
+        issuer_ext: t.Optional[str] = None,
+        issuer: t.Optional[str] = None,
+        label: t.Optional[str] = None,
         period: int = DEFAULT_PERIOD,
-        exp_data: Optional[str] = None,
-        pin: Optional[str] = None,
-        serial: Optional[str] = None,
-        secret: Optional[Secret] = None,
-        token_db: Optional["TokenDb"] = None,
+        exp_data: t.Optional[str] = None,
+        pin: t.Optional[str] = None,
+        serial: t.Optional[str] = None,
+        secret: t.Optional[Secret] = None,
+        token_db: t.Optional["TokenDb"] = None,
     ) -> None:
         self.token_db = token_db
         self.rowid = rowid
@@ -140,7 +156,7 @@ class Token:
 
     def _parse_data(self, data: JsonData) -> None:
         self.data = data
-        self.rowid = cast(Optional[int], data.get("rowid"))
+        self.rowid = cast(t.Optional[int], data.get("rowid"))
         self.type = TokenType[cast(str, data.get("type")).upper()]
         self.algorithm = cast(str, data.get("algo")) or DEFAULT_ALGORITHM
         self.counter = cast(int, data.get("counter"))
@@ -181,29 +197,30 @@ class Token:
         self.serial = None
         self.secret = Secret.from_base32(cast(str, query.get("secret")))
 
-    def calculate(self, timestamp: Optional[Union[int, datetime]] = None, counter: Optional[int] = None) -> str:
+    def calculate(self, timestamp: t.Optional[t.Union[int, datetime]] = None, counter: t.Optional[int] = None) -> str:
         if self.type == TokenType.SECURID:
             return self._calculate_securid()
         algorithm = ALGORITHMS.get(self.algorithm, hashlib.sha1)
         if self.type == TokenType.HOTP:
             value = counter if counter is not None else self.counter
         elif timestamp is not None and isinstance(timestamp, datetime):
-            value = timestamp.timestamp() // self.period
+            value = int(timestamp.timestamp()) // self.period
         elif timestamp is not None:
             value = timestamp // self.period
         else:
             value = int(int(time.time()) / self.period)
-        t = struct.pack(">q", int(value))
+        t = struct.pack(">q", value)
         hmac_ = hmac.HMAC(self.secret.to_bytes(), t, algorithm).digest()
         offset = hmac_[-1] & 0x0F
         code = struct.unpack(">L", hmac_[offset : offset + 4])[0]
         frmt = "{0:0%dd}" % self.digits
         return frmt.format((code & 0x7FFFFFFF) % int(math.pow(10, self.digits)))
 
-    def time_left(self, for_time: Union[int, datetime, None] = None) -> int:
+    def time_left(self, for_time: t.Union[int, datetime, None] = None) -> t.Optional[int]:
         """
         Time until next token
 
+        :param for_time: time to calculate the time left for
         :returns: seconds
         """
         if self.type == TokenType.SECURID:
@@ -223,17 +240,37 @@ class Token:
             return result
 
         else:
+            return None
+
+    def spinner(self, spinner_chars: str) -> str:
+        """
+        Return a spinner character based on the time left to the next token
+
+        :param spinner_chars: string of spinner characters
+        :returns: spinner
+        """
+        if not spinner_chars:
             return ""
+        time_left = self.time_left()
+        if time_left is None:
+            return ""
+        t = min(time_left * len(spinner_chars) // self.period, len(spinner_chars) - 1)
+        return spinner_chars[t]
 
     def _calculate_securid(self) -> str:
         from securid.jsontoken import JSONTokenFile
 
-        return cast(str, JSONTokenFile(data=self.to_dict()).get_token().now())
+        return JSONTokenFile(data=self.to_dict()).get_token().now()
 
     def to_dict(self, encode_type: EncodeType = EncodeType.INT_LIST) -> JsonData:
-        "Return token as dict"
+        """
+        Return token as dict
+
+        :param encode_type: encoding type for the secret
+        :returns: token as dict
+        """
         if encode_type == EncodeType.INT_LIST:
-            secret: Union[List[int], str] = self.secret.to_int_list()
+            secret: t.Union[t.List[int], str] = self.secret.to_int_list()
         elif encode_type == EncodeType.HEX:
             secret = self.secret.to_hex()
         else:
@@ -259,7 +296,7 @@ class Token:
 
     def to_uri(self) -> str:
         "Return token as otpauth uri"
-        data: Dict[str, Union[str, int]] = {}
+        data: t.Dict[str, t.Union[str, int]] = {}
         if self.algorithm:
             data["algorithm"] = self.algorithm
         if self.digits:
@@ -267,19 +304,14 @@ class Token:
         if self.period and self.type != TokenType.HOTP:
             data["period"] = self.period
         if self.type == TokenType.HOTP:
-            data["counter"] = self.counter
+            data["counter"] = self.counter or 0
         data["secret"] = self.secret.to_base32()
-        if self.issuer:
-            label = f"{self.issuer.strip()}:{self.label.strip()}"
-        elif self.label:
-            label = self.label.strip()
-        else:
-            label = ""
+        label = ":".join([x.strip() for x in [self.issuer, self.label] if x])
         query = urllib.parse.urlencode(data)
         return urllib.parse.urlunparse(("otpauth", self.type.value.lower(), label, None, query, None))
 
     def details(self) -> str:
-        result: List[str] = []
+        result: t.List[str] = []
         for key, value in self.to_dict(encode_type=EncodeType.BASE32).items():
             result.append(f"{key}: {value}")
         return "\n".join(result)
@@ -297,10 +329,8 @@ class Token:
             self.token_db.delete(self.rowid)
 
     def __str__(self) -> str:
-        if self.issuer:
-            return f"{self.issuer.strip()}:{self.label.strip()}"
-        elif self.label:
-            return self.label.strip()
+        if self.issuer or self.label:
+            return ":".join([x.strip() for x in [self.issuer, self.label] if x])
         elif self.rowid is not None:
             return f"#{self.rowid}"  # type: ignore
         else:
@@ -321,8 +351,8 @@ class TokenDb:
             cursor.execute(SQL_CREATE_TABLE)
         return connection
 
-    def get_tokens(self) -> List[Token]:
-        result: List[Token] = []
+    def get_tokens(self) -> t.List[Token]:
+        result: t.List[Token] = []
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
                 rows = cursor.execute(SQL_SELECT_TOKENS).fetchall()
@@ -431,14 +461,14 @@ class TokenDb:
         # with json_filename.open("r") as f:
         # self.data = json.loads(f.read())
 
-        tokens: List[JsonData] = []
+        tokens: t.List[JsonData] = []
         for token_obj in self.get_tokens():
             token = token_obj.to_dict()
             token["issuerInt"] = token["issuer"]
             token["issuerExt"] = token["issuer"]
             del token["issuer"]
             tokens.append(token)
-        token_order: List[str] = [f"{token['issuerInt']}:{token['label']}" for token in tokens]
+        token_order: t.List[str] = [f"{token['issuerInt']}:{token['label']}" for token in tokens]
         result = {"tokenOrder": token_order, "tokens": tokens}
         with json_filename.open("w") as f:
             json.dump(result, f, indent=2)

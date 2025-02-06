@@ -26,12 +26,12 @@
 import base64
 import os
 import sys
+import typing as t
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
 
-import appdirs
+import appdirs  # type: ignore
 import click
 import pzp
 from click.core import Command, Context
@@ -64,6 +64,9 @@ __all__ = [
 DESCRIPTION = "FreakOTP is a command line two-factor authentication application."
 CONFIG_DIR = Path(appdirs.user_config_dir(appname="FreakOTP"))
 DEFAULT_DB = CONFIG_DIR / "freakotp.db"
+SPINNER_STYLE_1 = "◯◔◒◕●"
+SPINNER_STYLE_2 = " ▁▂▃▄▅▆▇█"
+SPINNER_STYLE_3 = " ▏▎▍▌▋▊▉"
 
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -76,7 +79,7 @@ class KeyBinding:
     label: str
 
     @property
-    def bind(self):
+    def bind(self) -> bool:
         return self.binding not in ("enter", "cancel")
 
     def __str__(self) -> str:
@@ -87,7 +90,7 @@ class KeyBinding:
 
 
 class FreakOTPGroup(click.Group):
-    def resolve_command(self, ctx: Context, args: List[str]) -> Tuple[Optional[str], Optional[Command], List[str]]:
+    def resolve_command(self, ctx: Context, args: t.List[str]) -> t.Tuple[t.Optional[str], t.Optional[Command], t.List[str]]:
         is_cmd = args and make_str(args[0]).startswith(".")
         if is_cmd:
             return super().resolve_command(ctx, args)
@@ -105,23 +108,34 @@ class FreakOTPGroup(click.Group):
 @click.option("-c", "--counter", help="HOTP counter value.", type=click.INT)
 @click.option("-t", "--time", help="TOTP timestamp.", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
 @click.option("--copy/--no-copy", help="Copy the code into the clipboard.", default=True, is_flag=True)
+@click.option("--all/--no-all", help="Show all codes.", default=False, is_flag=True)
 @click.pass_context
-def cli(ctx: Context, db: str, verbose: bool, counter: Optional[int], time: Optional[datetime], copy: bool) -> None:
-    ctx.obj = FreakOTP(db_filename=Path(db), verbose=verbose, counter=counter, timestamp=time, copy=copy)
+def cli(
+    ctx: Context,
+    db: str,
+    verbose: bool,
+    counter: t.Optional[int],
+    time: t.Optional[datetime],
+    copy: bool,
+    all: bool,
+) -> None:
+    ctx.obj = FreakOTP(db_filename=Path(db), verbose=verbose, counter=counter, timestamp=time, copy=copy, show_all=all)
     if ctx.invoked_subcommand is None:
         freak = ctx.obj
         freak.menu()
 
 
 class FreakOTP(object):
-    verbose: bool
-    token_db: TokenDb
-    counter: Optional[int]
-    timestamp: Optional[datetime]
-    copy: bool
+    verbose: bool  # Verbose output
+    token_db: TokenDb  # Token database
+    counter: t.Optional[int]  # HOTP counter value
+    timestamp: t.Optional[datetime]  # TOTP timestamp
+    copy: bool  # Copy the code into the clipboard flag
+    show_all: bool  # Show all OTP flag
     key_bindings = {
         "enter": KeyBinding(binding="enter", label="Show OTP"),
         "cancel": KeyBinding(binding="ctrl-c", label="Exit"),
+        "all": KeyBinding(binding="ctrl-s", label="Show All"),
         "qrcode": KeyBinding(binding="ctrl-q", label="QR-Code"),
         "uri": KeyBinding(binding="ctrl-u", label="URI"),
         "insert-token": KeyBinding(binding="ctrl-i", label="Insert"),
@@ -133,55 +147,68 @@ class FreakOTP(object):
         self,
         db_filename: Path = DEFAULT_DB,
         verbose: bool = False,
-        counter: Optional[int] = None,
-        timestamp: Optional[datetime] = None,
+        counter: t.Optional[int] = None,
+        timestamp: t.Optional[datetime] = None,
         copy: bool = True,
+        show_all: bool = False,
     ):
         self.verbose = verbose
         self.token_db = TokenDb(db_filename)
         self.counter = counter
         self.timestamp = timestamp
         self.copy = copy
+        self.show_all = show_all
 
     def menu(self) -> None:
         "Display menu"
-        try:
-            token = pzp.pzp(
-                self.token_db.get_tokens,
-                format_fn=lambda item: f"{item.rowid:2d}: {item}",
-                fullscreen=False,
-                layout="reverse-list",
-                header_str="  ".join([f"{PURPLE}{x}{RESET} {x.label}" for x in self.key_bindings.values()]),
-                keys_binding=(dict([(k, [v.binding]) for k, v in self.key_bindings.items() if v.bind])),
-                auto_refresh=1,
-            )
-            if token is not None:
-                if self.verbose:
-                    click.secho(token.details(), fg="yellow")
-                otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
-                self.copy_into_clipboard(otp)
-                print(otp)
-        except pzp.CustomAction as action:
-            if action.action == "qrcode" and action.selected_item:
-                action.selected_item.print_qrcode()
-            elif action.action == "uri" and action.selected_item:
-                print(action.selected_item.to_uri())
-            elif action.action == "delete-token" and action.selected_item:
-                self.delete_tokens([action.selected_item])
-            elif action.action == "insert-token" and action.selected_item:
-                self.add_token()
-            elif action.action == "edit-token" and action.selected_item:
-                self.edit_token(action.selected_item)
+        while True:
+            try:
+                if self.show_all:
+                    # format_fn = lambda item: f"{item.rowid:2d}: {item.calculate():>8} {item.spinner(SPINNER_STYLE_1)} [{item.time_left():>2}] {item}"
+                    format_fn = lambda item: f"{item.rowid:2d}: {item.calculate():>8} [{item.time_left():>2}] {item}"
+                else:
+                    format_fn = lambda item: f"{item.rowid:2d}: {item}"
+                token = pzp.pzp(
+                    self.token_db.get_tokens,
+                    format_fn=format_fn,
+                    fullscreen=False,
+                    layout="reverse-list",
+                    header_str="  ".join([f"{PURPLE}{x}{RESET} {x.label}" for x in self.key_bindings.values()]),
+                    keys_binding=(dict([(k, [v.binding]) for k, v in self.key_bindings.items() if v.bind])),
+                    auto_refresh=1,
+                )
+                if token is not None:
+                    if self.verbose:
+                        click.secho(token.details(), fg="yellow")
+                    otp = token.calculate(timestamp=self.timestamp, counter=self.counter)
+                    self.copy_into_clipboard(otp)
+                    print(otp)
+                break
+            except pzp.CustomAction as action:
+                if action.action == "qrcode" and action.selected_item:
+                    action.selected_item.print_qrcode()
+                elif action.action == "uri" and action.selected_item:
+                    print(action.selected_item.to_uri())
+                elif action.action == "delete-token" and action.selected_item:
+                    self.delete_tokens(tuple([action.selected_item]))
+                elif action.action == "insert-token" and action.selected_item:
+                    self.add_token()
+                elif action.action == "edit-token" and action.selected_item:
+                    self.edit_token(action.selected_item)
+                elif action.action == "all":
+                    self.show_all = not self.show_all
+                    continue
+                break
 
     def list(
         self,
         calculate: bool = False,
         long_format: bool = False,
-        tokens: Union[None, str, Token, Sequence[str], Sequence[Token]] = None,
+        tokens: t.Union[None, str, Token, t.Sequence[str], t.Sequence[Token]] = None,
     ) -> None:
         "List tokens"
         if tokens:
-            tokens_list: List[Token] = self.find(tokens)
+            tokens_list: t.List[Token] = self.find(tokens)
         else:
             tokens_list = self.token_db.get_tokens()
         for i, token in enumerate(tokens_list):
@@ -214,10 +241,10 @@ class FreakOTP(object):
         except Exception:
             raise KeyError(index)
 
-    def find(self, arg: Union[str, Token, Sequence[str], Sequence[Token]]) -> List[Token]:
-        args_list: Sequence[Union[str, Token]] = arg if isinstance(arg, (tuple, list)) else [arg]
-        result: List[Token] = [x for x in args_list if isinstance(x, Token)]
-        labels: List[str] = [x for x in args_list if isinstance(x, str)]
+    def find(self, arg: t.Union[str, Token, t.Sequence[str], t.Sequence[Token]]) -> t.List[Token]:
+        args_list: t.Sequence[t.Union[str, Token]] = arg if isinstance(arg, (tuple, list)) else [arg]
+        result: t.List[Token] = [x for x in args_list if isinstance(x, Token)]
+        labels: t.List[str] = [x for x in args_list if isinstance(x, str)]
         for label in labels:
             if label.startswith("otpauth://"):
                 result.append(Token(uri=label))
@@ -239,18 +266,18 @@ class FreakOTP(object):
 
     def add_token(
         self,
-        uri: Optional[str] = None,
-        rowid: Optional[int] = None,
-        type_str: Optional[str] = "TOTP",
+        uri: t.Optional[str] = None,
+        rowid: t.Optional[int] = None,
+        type_str: t.Optional[str] = "TOTP",
         algorithm: str = DEFAULT_ALGORITHM,
-        counter: Optional[int] = None,
+        counter: t.Optional[int] = None,
         digits: int = DEFAULT_DIGITS,
-        issuer_int: Optional[str] = None,
-        issuer_ext: Optional[str] = None,
-        issuer: Optional[str] = None,
-        label: Optional[str] = None,
+        issuer_int: t.Optional[str] = None,
+        issuer_ext: t.Optional[str] = None,
+        issuer: t.Optional[str] = None,
+        label: t.Optional[str] = None,
         period: int = DEFAULT_PERIOD,
-        secret_str: Optional[str] = None,
+        secret_str: t.Optional[str] = None,
     ) -> Token:
         "Add a token to the FreakOTP database"
         self.title("Add token")
@@ -258,7 +285,7 @@ class FreakOTP(object):
             uri_or_secret = pzp.prompt("Secret key Base32 or URI (otpauth://)", show_default=False).strip()
             if uri_or_secret.startswith("otpauth"):
                 uri = uri_or_secret
-                secret: Secret = None
+                secret: t.Optional[Secret] = None
             else:
                 secret = Secret.from_base32(uri_or_secret)
                 issuer = pzp.prompt("Issuer", default=issuer)
@@ -284,7 +311,7 @@ class FreakOTP(object):
                     period = pzp.prompt("Time-step duration in seconds", type=click.INT, default=period)
         token = Token(
             uri=uri,
-            type=TokenType[type_str] if type_str else None,
+            type=TokenType[type_str] if type_str else TokenType.TOTP,
             algorithm=algorithm,
             counter=counter,
             digits=digits,
@@ -315,7 +342,7 @@ class FreakOTP(object):
             input=token.type.value,
             fullscreen=False,
         )
-        token.type = TokenType[type_str] if type_str else None
+        token.type = TokenType[type_str] if type_str else TokenType.TOTP
         print(f"Token type: {type_str}")
         token.algorithm = pzp.pzp(
             header_str="Algorithm:",
@@ -336,7 +363,7 @@ class FreakOTP(object):
         click.secho("Token updated", fg="green")
         return token
 
-    def delete_tokens(self, tokens: Tuple[str], force: bool = False) -> None:
+    def delete_tokens(self, tokens: t.Tuple[str], force: bool = False) -> None:
         "Delete tokens"
         count = 0
         self.title("Delete token")
@@ -369,7 +396,7 @@ class FreakOTP(object):
 @click.argument("tokens", nargs=-1)
 @click.option("-l", "--long", "long_format", help="Use a long listing format", default=False, is_flag=True)
 @click.pass_context
-def cmd_otp(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
+def cmd_otp(ctx: Context, long_format: bool, tokens: t.Tuple[str]) -> None:
     """
     Display OTPs
 
@@ -383,7 +410,7 @@ def cmd_otp(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
 @click.argument("tokens", nargs=-1)
 @click.option("-l", "--long", "long_format", help="Use a long listing format", default=False, is_flag=True)
 @click.pass_context
-def cmd_ls(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
+def cmd_ls(ctx: Context, long_format: bool, tokens: t.Tuple[str]) -> None:
     """
     Display token list
 
@@ -397,7 +424,7 @@ def cmd_ls(ctx: Context, long_format: bool, tokens: Tuple[str]) -> None:
 @click.option("-i", "--invert", help="Invert QR Code background/foreground colors", default=False, is_flag=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_qrcode(ctx: Context, invert: bool, tokens: Tuple[str]) -> None:
+def cmd_qrcode(ctx: Context, invert: bool, tokens: t.Tuple[str]) -> None:
     """
     Display token qrcodes
 
@@ -413,7 +440,7 @@ def cmd_qrcode(ctx: Context, invert: bool, tokens: Tuple[str]) -> None:
 @cli.command(".uri")
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_uri(ctx: Context, tokens: Tuple[str]) -> None:
+def cmd_uri(ctx: Context, tokens: t.Tuple[str]) -> None:
     """
     Display token uri
 
@@ -464,7 +491,7 @@ def cmd_export(ctx: Context, filename: str) -> None:
 @click.option("-f", "--force", help="Never prompt", default=False, is_flag=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
+def cmd_delete(ctx: Context, force: bool, tokens: t.Tuple[str]) -> None:
     """
     Delete tokens
 
@@ -477,7 +504,7 @@ def cmd_delete(ctx: Context, force: bool, tokens: Tuple[str]) -> None:
 @cli.command(".edit")
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_edit(ctx: Context, tokens: Tuple[str]) -> None:
+def cmd_edit(ctx: Context, tokens: t.Tuple[str]) -> None:
     """
     Edit tokens
 
@@ -503,13 +530,13 @@ def cmd_add(
     ctx: Context,
     algorithm: str,
     type_str: str,
-    counter: Optional[int],
+    counter: t.Optional[int],
     digits: int,
-    issuer: Optional[str],
-    label: Optional[str],
+    issuer: t.Optional[str],
+    label: t.Optional[str],
     period: int,
-    secret_str: Optional[str],
-    uri: Optional[str],
+    secret_str: t.Optional[str],
+    uri: t.Optional[str],
 ) -> None:
     """
     Import a new token into the database
@@ -533,7 +560,7 @@ def cmd_add(
 @cli.command(".default", hidden=True)
 @click.argument("tokens", nargs=-1)
 @click.pass_context
-def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
+def cmd_default(ctx: Context, tokens: t.Tuple[str]) -> None:
     freak = ctx.obj
     if tokens:
         for i, token in enumerate(freak.find(tokens)):
@@ -552,11 +579,11 @@ def cmd_default(ctx: Context, tokens: Tuple[str]) -> None:
 @cli.command(".help", hidden=False)
 @click.argument("cmds", nargs=-1)
 @click.pass_context
-def cmd_help(ctx: Context, cmds: Tuple[str]) -> None:
+def cmd_help(ctx: Context, cmds: t.Tuple[str]) -> None:
     """Show help and exit"""
     if cmds:
         for cmd in cmds:
-            command: Optional[click.Command] = ctx.parent.command.get_command(ctx=ctx.parent, cmd_name=cmd)
+            command: t.Optional[click.Command] = ctx.parent.command.get_command(ctx=ctx.parent, cmd_name=cmd)
             if command is not None:
                 click.echo(command.get_help(ctx=ctx), color=ctx.color)
     else:
@@ -564,7 +591,7 @@ def cmd_help(ctx: Context, cmds: Tuple[str]) -> None:
     ctx.exit()
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: t.Optional[t.List[str]] = None) -> int:
     if argv:
         prog_name = Path(argv[0]).name
         args = argv[1:]
