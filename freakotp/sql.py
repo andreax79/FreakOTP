@@ -38,8 +38,8 @@ TOKEN_COLUMNS = [
     "serial",  # SecurID token serial
     "secret",
 ]
-SQL_DROP_TABLE = "drop table token"
-SQL_CREATE_TABLE = """
+SQL_DROP_TOKENS_TABLE = "drop table token"
+SQL_CREATE_TOKENS_TABLE = """
 create table if not exists token (
     type text,
     algo text,
@@ -54,13 +54,13 @@ create table if not exists token (
     serial text,
     secret text
 )"""
-SQL_INSERT = """
+SQL_INSERT_TOKEN = """
 insert into token(type, algo, counter, digits, issuer_int, issuer_ext, label, period, exp_date, pin, serial, secret)
 values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
-SQL_DELETE = "delete from token where rowid=?"
+SQL_DELETE_TOKEN = "delete from token where rowid=?"
 SQL_SELECT_TOKENS = f"select {','.join(TOKEN_COLUMNS)} from token"
-SQL_UPDATE = """
+SQL_UPDATE_TOKEN = """
 update token
 set
     type=?,

@@ -43,12 +43,12 @@ import qrcode  # type: ignore
 
 from .secret import Secret
 from .sql import (
-    SQL_CREATE_TABLE,
-    SQL_DELETE,
-    SQL_DROP_TABLE,
-    SQL_INSERT,
+    SQL_CREATE_TOKENS_TABLE,
+    SQL_DELETE_TOKEN,
+    SQL_DROP_TOKENS_TABLE,
+    SQL_INSERT_TOKEN,
     SQL_SELECT_TOKENS,
-    SQL_UPDATE,
+    SQL_UPDATE_TOKEN,
     TOKEN_COLUMNS,
 )
 
@@ -348,7 +348,7 @@ class TokenDb:
         except TypeError:  # Python < 3.7
             connection = sqlite3.connect(str(self.filename))
         with closing(connection.cursor()) as cursor:
-            cursor.execute(SQL_CREATE_TABLE)
+            cursor.execute(SQL_CREATE_TOKENS_TABLE)
         return connection
 
     def get_tokens(self) -> t.List[Token]:
@@ -365,7 +365,7 @@ class TokenDb:
         "Delete a token by rowid"
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
-                cursor.execute(SQL_DELETE, [rowid])
+                cursor.execute(SQL_DELETE_TOKEN, [rowid])
                 connection.commit()
 
     def insert(self, token: Token) -> None:
@@ -373,7 +373,7 @@ class TokenDb:
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
                 cursor.execute(
-                    SQL_INSERT,
+                    SQL_INSERT_TOKEN,
                     (
                         token.type.value,
                         token.algorithm,
@@ -396,7 +396,7 @@ class TokenDb:
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
                 cursor.execute(
-                    SQL_UPDATE,
+                    SQL_UPDATE_TOKEN,
                     (
                         token.type.value,
                         token.algorithm,
@@ -419,8 +419,8 @@ class TokenDb:
         "Delete all the tokens"
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
-                cursor.execute(SQL_DROP_TABLE)
-                cursor.execute(SQL_CREATE_TABLE)
+                cursor.execute(SQL_DROP_TOKENS_TABLE)
+                cursor.execute(SQL_CREATE_TOKENS_TABLE)
                 connection.commit()
 
     def import_json(self, json_filename: Path, delete_existing_data: bool = False) -> int:
@@ -431,12 +431,12 @@ class TokenDb:
         with closing(self.open_db()) as connection:
             with closing(connection.cursor()) as cursor:
                 if delete_existing_data:
-                    cursor.execute(SQL_DROP_TABLE)
-                cursor.execute(SQL_CREATE_TABLE)
+                    cursor.execute(SQL_DROP_TOKENS_TABLE)
+                cursor.execute(SQL_CREATE_TOKENS_TABLE)
                 for token in self.data["tokens"]:
                     secret = Secret.from_int_list(token["secret"])
                     cursor.execute(
-                        SQL_INSERT,
+                        SQL_INSERT_TOKEN,
                         (
                             token.get("type"),
                             token.get("algo") or DEFAULT_ALGORITHM,
