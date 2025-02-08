@@ -1,5 +1,6 @@
-appdirs
-qrcode
 click
-pzp>=0.0.24
+platformdirs
+pzp>=0.0.28
+qrcode
+tomlkit
 zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability

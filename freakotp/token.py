@@ -198,8 +198,18 @@ class Token:
         self.secret = Secret.from_base32(cast(str, query.get("secret")))
 
     def calculate(self, timestamp: t.Optional[t.Union[int, datetime]] = None, counter: t.Optional[int] = None) -> str:
+        """
+        Calculate the code for the token
+
+        :param timestamp: timestamp to calculate the code for
+        :param counter: counter to calculate the code for (for HOTP)
+        :returns: the code
+        """
         if self.type == TokenType.SECURID:
-            return self._calculate_securid()
+            try:
+                return self._calculate_securid()
+            except Exception:
+                return "??????"
         algorithm = ALGORITHMS.get(self.algorithm, hashlib.sha1)
         if self.type == TokenType.HOTP:
             value = counter if counter is not None else self.counter
@@ -224,10 +234,13 @@ class Token:
         :returns: seconds
         """
         if self.type == TokenType.SECURID:
-            from securid.jsontoken import JSONTokenFile
+            try:
+                from securid.jsontoken import JSONTokenFile
 
-            token = JSONTokenFile(data=self.to_dict()).get_token()
-            return token.time_left(for_time)
+                token = JSONTokenFile(data=self.to_dict()).get_token()
+                return token.time_left(for_time)
+            except Exception:
+                return None
 
         elif self.type == TokenType.TOTP:
             if for_time is None:
@@ -313,7 +326,7 @@ class Token:
     def details(self) -> str:
         result: t.List[str] = []
         for key, value in self.to_dict(encode_type=EncodeType.BASE32).items():
-            result.append(f"{key}: {value}")
+            result.append(f"{key.title() + ':':<10} {value}")
         return "\n".join(result)
 
     def print_qrcode(self, invert: bool = True) -> None:

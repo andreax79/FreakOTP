@@ -33,8 +33,9 @@ from pathlib import Path
 
 import click
 import pzp
-from pzp.ansi import PURPLE, RESET
+from pzp.ansi import ESC, PURPLE, RESET
 
+from .config import Config
 from .secret import Secret
 from .token import (
     ALGORITHMS,
@@ -76,15 +77,14 @@ class KeyBinding:
 
 class FreakOTP:
     verbose: bool  # Verbose output
+    config: Config  # Configuration
     token_db: TokenDb  # Token database
     counter: t.Optional[int]  # HOTP counter value
     timestamp: t.Optional[datetime]  # TOTP timestamp
-    copy_to_clipboard: bool  # Copy the code into the clipboard flag
-    show_codes: bool  # Show all OTP flag
     key_bindings = {
         "enter": KeyBinding(binding="enter", label="Show OTP"),
         "cancel": KeyBinding(binding="ctrl-c", label="Exit"),
-        "all": KeyBinding(binding="ctrl-s", label="Show All"),
+        "settings": KeyBinding(binding="ctrl-s", label="Settings"),
         "qrcode": KeyBinding(binding="ctrl-q", label="QR-Code"),
         "uri": KeyBinding(binding="ctrl-u", label="URI"),
         "insert-token": KeyBinding(binding="ctrl-i", label="Insert"),
@@ -94,32 +94,43 @@ class FreakOTP:
 
     def __init__(
         self,
-        db_filename: Path,
+        db_path: Path,
+        config_path: Path,
         verbose: bool = False,
         counter: t.Optional[int] = None,
         timestamp: t.Optional[datetime] = None,
-        copy_to_clipboard: bool = True,
-        show_codes: bool = False,
+        copy_to_clipboard: t.Optional[bool] = None,
+        show_codes: t.Optional[bool] = None,
     ):
         self.verbose = verbose
-        self.token_db = TokenDb(db_filename)
+        self.config = Config.load(config_path)
+        self.token_db = TokenDb(db_path)
         self.counter = counter
         self.timestamp = timestamp
-        self.copy_to_clipboard = copy_to_clipboard
-        self.show_codes = show_codes
+        if copy_to_clipboard is not None:
+            self.config.copy_to_clipboard = copy_to_clipboard
+        if show_codes is not None:
+            self.config.show_codes = show_codes
+
+    def format_token(self, token: Token) -> str:
+        "Format token for display in the menu"
+        parts = [f"{token.rowid:2d}:"]
+        if self.config.show_codes:
+            parts.append(f"{token.calculate():>8}")
+        if self.config.spinner_style:
+            parts.append(f"{token.spinner(self.config.spinner_style):1}")
+        if self.config.show_time_left:
+            parts.append(f"[{token.time_left() or '--':>2}]")
+        parts.append(f" {token}")
+        return " ".join(parts)
 
     def menu(self) -> None:
         "Display menu"
         while True:
             try:
-                if self.show_codes:
-                    # format_fn = lambda item: f"{item.rowid:2d}: {item.calculate():>8} {item.spinner(SPINNER_STYLE_1)} [{item.time_left():>2}] {item}"
-                    format_fn = lambda item: f"{item.rowid:2d}: {item.calculate():>8} [{item.time_left():>2}] {item}"
-                else:
-                    format_fn = lambda item: f"{item.rowid:2d}: {item}"
                 token = pzp.pzp(
                     self.token_db.get_tokens,
-                    format_fn=format_fn,
+                    format_fn=self.format_token,
                     fullscreen=False,
                     layout="reverse-list",
                     header_str="  ".join([f"{PURPLE}{x}{RESET} {x.label}" for x in self.key_bindings.values()]),
@@ -139,13 +150,16 @@ class FreakOTP:
                 elif action.action == "uri" and action.selected_item:
                     print(action.selected_item.to_uri())
                 elif action.action == "delete-token" and action.selected_item:
-                    self.delete_tokens(tuple([action.selected_item]))
+                    self.delete_tokens(tuple([action.selected_item]), clear_screen=True)
+                    continue
                 elif action.action == "insert-token" and action.selected_item:
-                    self.add_token()
+                    self.add_token(clear_screen=True)
+                    continue
                 elif action.action == "edit-token" and action.selected_item:
-                    self.edit_token(action.selected_item)
-                elif action.action == "all":
-                    self.show_codes = not self.show_codes
+                    self.edit_token(action.selected_item, clear_screen=True)
+                    continue
+                elif action.action == "settings":
+                    self.settings(clear_screen=True)
                     continue
                 break
 
@@ -227,15 +241,19 @@ class FreakOTP:
         label: t.Optional[str] = None,
         period: int = DEFAULT_PERIOD,
         secret_str: t.Optional[str] = None,
+        clear_screen: bool = False,
     ) -> Token:
         "Add a token to the FreakOTP database"
+        lines = 1
         self.title("Add token")
         if not secret_str and not uri:
+            lines += 1
             uri_or_secret = pzp.prompt("Secret key Base32 or URI (otpauth://)", show_default=False).strip()
             if uri_or_secret.startswith("otpauth"):
                 uri = uri_or_secret
                 secret: t.Optional[Secret] = None
             else:
+                lines += 6
                 secret = Secret.from_base32(uri_or_secret)
                 issuer = pzp.prompt("Issuer", default=issuer)
                 label = pzp.prompt("Label", default=label)
@@ -254,9 +272,11 @@ class FreakOTP:
                 )
                 print(f"Algorithm: {algorithm}")
                 if type_str == "HOTP":
+                    lines += 1
                     counter = pzp.prompt("HOTP counter value", type=click.INT, default=counter)
                 digits = pzp.prompt("Number of digits in one-time password", type=click.INT, default=digits)
                 if type_str != "HOTP":
+                    lines += 1
                     period = pzp.prompt("Time-step duration in seconds", type=click.INT, default=period)
         token = Token(
             uri=uri,
@@ -272,14 +292,17 @@ class FreakOTP:
             secret=secret,
             token_db=self.token_db,
         )
-        if self.verbose:
-            click.secho(token.details(), fg="yellow")
         self.token_db.insert(token)
         click.secho("Token added", fg="green")
+        lines += 1
+        if clear_screen:
+            # Move cursor up
+            print(f"{ESC}[{lines}A")
         return token
 
-    def edit_token(self, token: Token) -> Token:
+    def edit_token(self, token: Token, clear_screen: bool = False) -> Token:
         "Edit a token"
+        lines = 9
         self.title(f"Edit token {token}")
         token.secret = Secret.from_base32(pzp.prompt("Secret", default=token.secret.to_base32()))
         token.issuer = pzp.prompt("Issuer", default=token.issuer)
@@ -302,17 +325,20 @@ class FreakOTP:
         )
         print(f"Algorithm: {token.algorithm}")
         if type_str == "HOTP":
+            lines += 1
             token.counter = pzp.prompt("HOTP counter value", type=click.INT, default=token.counter)
         token.digits = pzp.prompt("Number of digits in one-time password", type=click.INT, default=token.digits)
         if type_str != "HOTP":
+            lines += 1
             token.period = pzp.prompt("Time-step duration in seconds", type=click.INT, default=token.period)
-        if self.verbose:
-            click.secho(token.details(), fg="yellow")
         self.token_db.update(token)
         click.secho("Token updated", fg="green")
+        if clear_screen:
+            # Move cursor up
+            print(f"{ESC}[{lines}A")
         return token
 
-    def delete_tokens(self, tokens: t.Tuple[str], force: bool = False) -> None:
+    def delete_tokens(self, tokens: t.Tuple[str], force: bool = False, clear_screen: bool = False) -> None:
         "Delete tokens"
         count = 0
         self.title("Delete token")
@@ -326,16 +352,51 @@ class FreakOTP:
             click.secho("Token deleted", fg="green")
         else:
             click.secho(f"{count} tokens deleted", fg="green")
+        if clear_screen:
+            # Move cursor up
+            print(f"{ESC}[4A")
 
     def title(self, title: str) -> None:
         click.secho(f"{title:66}", bg="blue", fg="white", bold=True)
 
     def copy_into_clipboard(self, otp: str) -> None:
         "Copy data into the clipboard"
-        if self.copy_to_clipboard:
+        if self.config.copy_to_clipboard:
             data = base64.b64encode(otp.encode("utf-8")).decode("ascii")
             data = f"\033]52;c;{data}\a"
             if "TMUX" in os.environ:
                 data = f"\033Ptmux;\033{data}\033\\"
             sys.stdout.write(data)
             sys.stdout.flush()
+
+    def settings(self, clear_screen: bool = False) -> None:
+        "Edit settings"
+        self.title("Settings")
+        self.config.copy_to_clipboard = pzp.confirm("Copy OTPs to clipboard", default=self.config.copy_to_clipboard)
+        print(f"Copy OTPs to clipboard: {'yes' if self.config.copy_to_clipboard else 'no'}")
+        self.config.show_codes = pzp.confirm("Show all OTPs", default=self.config.show_codes)
+        print(f"Show all OTPs: {'yes' if self.config.show_codes else 'no'}")
+        self.config.show_time_left = pzp.confirm("Show OTP expiration time", default=self.config.show_time_left)
+        print(f"Show OTP expiration time: {'yes' if self.config.show_codes else 'no'}")
+        spinner_styles = list(SPINNER_STYLES)
+        if self.config.spinner_style not in spinner_styles:
+            spinner_styles.append(self.config.spinner_style)
+        spinner_style = pzp.pzp(
+            header_str="Expiration spinner style: ",
+            layout="reverse-list",
+            candidates=range(len(spinner_styles)),
+            format_fn=lambda x: f"{spinner_styles[x]}" if x != 0 else "No spinner",
+            fullscreen=False,
+            selected=spinner_styles.index(self.config.spinner_style),
+        )
+        print(
+            f"Expiration spinner style: {spinner_styles[spinner_style]}"
+            if spinner_style != 0
+            else "Expiration spinner style: No spinner"
+        )
+        self.config.spinner_style = spinner_styles[spinner_style]
+        # Save configuration
+        self.config.save()
+        if clear_screen:
+            # Move cursor up 5 lines
+            print(f"{ESC}[5A")

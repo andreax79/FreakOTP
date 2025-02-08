@@ -23,6 +23,7 @@
 # SOFTWARE.
 #
 
+import traceback
 import typing as t
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,7 @@ __all__ = [
 DESCRIPTION = "FreakOTP is a command line two-factor authentication application."
 CONFIG_DIR = Path(platformdirs.user_config_dir(appname="FreakOTP"))
 DEFAULT_DB = CONFIG_DIR / "freakotp.db"
+DEFAULT_CONFIG = CONFIG_DIR / "freakotp.toml"
 
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -78,23 +80,26 @@ class FreakOTPGroup(click.Group):
 @click.group("cli", invoke_without_command=True, cls=FreakOTPGroup, help=DESCRIPTION)
 @click.version_option(__version__)
 @click.option("--db", help="Database path.", default=DEFAULT_DB, type=click.Path(), envvar="FREAKOTP_DB")
+@click.option("--config", help="Configuration path.", default=DEFAULT_CONFIG, type=click.Path(), envvar="FREAKOTP_CONFIG")
 @click.option("-v", "--verbose", help="Verbose output.", default=False, is_flag=True)
 @click.option("-c", "--counter", help="HOTP counter value.", type=click.INT)
 @click.option("-t", "--time", help="TOTP timestamp.", type=click.DateTime(formats=["%Y-%m-%dT%H:%M:%S"]), default=None)
-@click.option("--copy/--no-copy", help="Copy the code into the clipboard.", default=True, is_flag=True)
-@click.option("--all/--no-all", help="Show all codes.", default=False, is_flag=True)
+@click.option("--copy/--no-copy", help="Copy the code into the clipboard.", default=None, is_flag=True)
+@click.option("--all/--no-all", help="Show all codes.", default=None, is_flag=True)
 @click.pass_context
 def cli(
     ctx: Context,
     db: str,
+    config: str,
     verbose: bool,
     counter: t.Optional[int],
     time: t.Optional[datetime],
-    copy: bool,
-    all: bool,
+    copy: t.Optional[bool],
+    all: t.Optional[bool],
 ) -> None:
     ctx.obj = FreakOTP(
-        db_filename=Path(db),
+        db_path=Path(db),
+        config_path=Path(config),
         verbose=verbose,
         counter=counter,
         timestamp=time,
@@ -227,6 +232,34 @@ def cmd_edit(ctx: Context, tokens: t.Tuple[str]) -> None:
     freak = ctx.obj
     for token in freak.find(tokens):
         freak.edit_token(token)
+        if freak.verbose:
+            click.secho(token.details(), fg="yellow")
+
+
+@cli.command(".show")
+@click.argument("tokens", nargs=-1)
+@click.pass_context
+def cmd_show(ctx: Context, tokens: t.Tuple[str]) -> None:
+    """
+    Show tokens
+
+    Example: freaktop .show token1
+    """
+    freak = ctx.obj
+    for token in freak.find(tokens):
+        click.secho(token.details(), fg="yellow")
+
+
+@cli.command(".settings")
+@click.pass_context
+def cmd_settings(ctx: Context) -> None:
+    """
+    Edit FreakOTP settings
+
+    Example: freaktop .settings
+    """
+    freak = ctx.obj
+    freak.settings()
 
 
 @cli.command(".add")
@@ -319,4 +352,5 @@ def main(argv: t.Optional[t.List[str]] = None) -> int:
         return err.code
     except Exception as ex:
         click.secho(f"{prog_name}: {ex}", fg="red")
+        print(f"{traceback.format_exc()}")
         return EXIT_FAILURE

@@ -36,23 +36,27 @@ Usage: freakotp [OPTIONS] [COMMAND|[TOKENS]...] [ARGS]...
 Options:
   --version                       Show the version and exit.
   --db PATH                       Database path.
+  --config PATH                   Configuration path.
   -v, --verbose                   Verbose output.
   -c, --counter INTEGER           HOTP counter value.
   -t, --time [%Y-%m-%dT%H:%M:%S]  TOTP timestamp.
   --copy / --no-copy              Copy the code into the clipboard.
+  --all / --no-all                Show all codes.
   --help                          Show this message and exit.
 
 Commands:
-  .add     Import a new token into the database
-  .delete  Delete tokens
-  .edit    Edit tokens
-  .export  Export tokens
-  .help    Show help and exit
-  .import  Import tokens from backup
-  .ls      Display token list
-  .otp     Display OTPs
-  .qrcode  Display token qrcodes
-  .uri     Display token uri
+  .add       Import a new token into the database
+  .delete    Delete tokens
+  .edit      Edit tokens
+  .export    Export tokens
+  .help      Show help and exit
+  .import    Import tokens from backup
+  .ls        Display token list
+  .otp       Display OTPs
+  .qrcode    Display token qrcodes
+  .settings  Edit FreakOTP settings
+  .show      Show tokens
+  .uri       Display token uri
 ```
 
 All the commands start with a dot, e.g. `.add`, `.delete`, `.ls`.
@@ -85,7 +89,7 @@ You can generate OTP code from existing token, adding new token or delete existi
 
 ```
 $ freakotp
-ENTER Show OTP  ^C Exit  ^Q QR-Code  ^U URI  ^I Insert  ^O Edit  ^X Delete
+ENTER Show OTP  ^C Exit  ^S Settings  ^Q QR-Code  ^U URI  ^I Insert  ^O Edit  ^X Delete
 >  1: roof:toll
    2: mental:suggestion
    3: congress:originally
@@ -115,6 +119,7 @@ Using the interactive gui:
 - **UP** / **PG UP** / **DOWN** / **PG DOWN** to move cursor up and down
 - **ENTER** to display OTP code of the selected token
 - **CTRL-C** / **ESC** to exit
+- **CTRL-S** change the settings
 - **CTRL-Q** display the selected token QR Code
 - **CTRL-U** export the selected token as URI
 - **CTRL-I** add a new token
@@ -290,6 +295,40 @@ built:atom
     ▀▀▀▀▀▀▀ ▀▀       ▀ ▀▀▀▀ ▀▀ ▀  ▀▀▀  ▀  ▀▀
 ````
 
+### freakotp .settings
+
+The `freakotp .settings` command allows you to change the settings of FreakOTP.
+
+```
+$ freakotp .settings
+Settings
+Copy OTPs to clipboard: yes
+Show all OTPs: yes
+Show OTP expiration time: yes
+Expiration spinner style:
+  No spinner
+> ◯◔◒◕●
+   ▁▂▃▄▅▆▇█
+   ▏▎▍▌▋▊▉
+  4/4
+>
+```
+
+### freakotp .show
+
+The `freakotp .show` command shows the matching tokens.
+
+```
+$ freakotp .show official:care
+Type:      TOTP
+Algorithm: SHA1
+Counter:   None
+Digits:    6
+Issuer:    official
+Label:     care
+Period:    30
+Secret:    WCAOTV2KDQIPZK3KIJB5GNSW3Y======
+```
 
 ### freakotp .uri
 
