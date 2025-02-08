@@ -1,5 +1,12 @@
 # FreakOTP changelog
 
+## [3.1.0] - 2025-02-08
+
+### Added
+
+- Edit settings
+- Show remaining time
+
 ## [3.0.7] - 2024-09-20
 
 ### Added
