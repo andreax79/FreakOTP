@@ -324,6 +324,7 @@ class Token:
         return urllib.parse.urlunparse(("otpauth", self.type.value.lower(), label, None, query, None))
 
     def details(self) -> str:
+        "Return token details as string"
         result: t.List[str] = []
         for key, value in self.to_dict(encode_type=EncodeType.BASE32).items():
             result.append(f"{key.title() + ':':<10} {value}")
@@ -471,9 +472,6 @@ class TokenDb:
 
     def export_json(self, json_filename: Path) -> int:
         "Export FreeOTP database using FreeOTP backup format"
-        # with json_filename.open("r") as f:
-        # self.data = json.loads(f.read())
-
         tokens: t.List[JsonData] = []
         for token_obj in self.get_tokens():
             token = token_obj.to_dict()
