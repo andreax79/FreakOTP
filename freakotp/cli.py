@@ -45,7 +45,7 @@ from .token import (
 )
 
 __author__ = "Andrea Bonomi <andrea.bonomi@gmail.com>"
-__version__ = "3.1.0"
+__version__ = "3.1.1"
 __all__ = [
     "main",
     "FreakOTP",
