@@ -306,6 +306,8 @@ class FreakOTP:
         self.title(f"Edit token {token}")
         token.secret = Secret.from_base32(pzp.prompt("Secret", default=token.secret.to_base32()))
         token.issuer = pzp.prompt("Issuer", default=token.issuer)
+        token.issuer_int = token.issuer
+        token.issuer_ext = token.issuer
         token.label = pzp.prompt("Label", default=token.label)
         type_str = pzp.pzp(
             header_str="Token type:",
